@@ -198,7 +198,8 @@
   }
   .quick button:active { background: #12271b; }
 
-  #kb { position: fixed; opacity: 0; pointer-events: none; left: -9999px; top: 0; }
+  /* hidden input that receives typing (and opens the soft keyboard on phones) */
+  #kb { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; font-size: 16px; caret-color: transparent; pointer-events: none; }
 
   @media (max-width: 760px) {
     body { font-size: 12.5px; }
@@ -236,7 +237,7 @@
     <div class="status">
       <div class="sess">[erickmob]</div>
       <div class="wins" id="wins">
-        <span class="win on" data-cmd="">0:ssh*</span>
+        <span class="win on" data-cmd="clear">0:ssh*</span>
         <span class="win" data-cmd="/list-projects">1:projects</span>
         <span class="win" data-cmd="/contact">2:contact</span>
         <span class="win" data-cmd="/about">3:about</span>
@@ -249,7 +250,7 @@
     </div>
   </div>
 </div>
-<input id="kb" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="terminal input">
+<form id="kbf" autocomplete="off"><input id="kb" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" aria-label="terminal input"></form>
 
 <script>
 // ─── data ────────────────────────────────────────────────────────────────
@@ -311,29 +312,49 @@ const pane = document.getElementById("pane");
 const kb = document.getElementById("kb");
 const titleEl = document.getElementById("title");
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const touch = matchMedia("(pointer: coarse)").matches;
 
-let mode = "boot";           // boot | prompt | select | busy
+let mode = "boot";           // boot | prompt | busy | select | contact
 let fast = reduced;          // skip animations
 let input = "";
 let history = [];
 let histIdx = -1;
 let promptEl = null;
 let picker = null;
+let cwd = "~";
+let queue = null;            // while a command runs, its output is collected here and printed line by line
+let typeahead = "";          // keys typed while a command was still printing, replayed at the next prompt
 
 const sleep = ms => new Promise(r => setTimeout(r, fast ? 0 : ms));
 const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 const scroll = () => { pane.scrollTop = pane.scrollHeight; };
+const link = url => `<a href="${url}" target="_blank" rel="noopener">${esc(url.replace(/^https:\/\//, ""))}</a>`;
+const time = () => new Date().toTimeString().slice(0, 8);
 
 function line(html = "", cls = "ln") {
   const el = document.createElement("div");
   el.className = cls;
   el.innerHTML = html;
-  pane.appendChild(el);
-  scroll();
+  if (queue) queue.push(el);
+  else { pane.appendChild(el); scroll(); }
   return el;
 }
+// inside command output: wait before printing what comes next
+const pause = ms => { if (queue) queue.push(ms); };
+
+async function flush() {
+  const items = queue;
+  queue = null;
+  for (const it of items) {
+    if (typeof it === "number") { await sleep(it); continue; }
+    pane.appendChild(it);
+    scroll();
+    await sleep(18);
+  }
+}
+
 const PS1_LOCAL = `<span class="prompt-user">guest@local</span><span class="dim">:</span><span class="prompt-path">~</span><span class="dim">$</span> `;
-const PS1 = `<span class="prompt-user">guest@erickmob</span><span class="dim">:</span><span class="prompt-path">~</span><span class="dim">$</span> `;
+const ps1 = () => `<span class="prompt-user">guest@erickmob</span><span class="dim">:</span><span class="prompt-path">${cwd}</span><span class="dim">$</span> `;
 
 async function typeInto(el, prefix, text, speed = 55) {
   for (let i = 1; i <= text.length; i++) {
@@ -384,10 +405,12 @@ function fingerprint() {
 
 async function boot() {
   mode = "boot";
+  typeahead = "";
+  cwd = "~";
   pane.innerHTML = "";
   titleEl.innerHTML = "<b>guest@local</b> — zsh — 120×40";
   line(`<span class="dim">Last login: ${new Date(Date.now() - 864e5 * 3).toString().slice(0, 24)} on ttys001</span>`);
-  const skip = line(`<span class="faint">(press any key to skip)</span>`);
+  const skip = line(`<span class="faint">(${touch ? "tap" : "press any key"} to skip)</span>`);
   await sleep(500);
 
   const cmd = line();
@@ -418,14 +441,13 @@ async function boot() {
   line(`  <span class="dim">${PROJECTS.length} projects · ${PROJECTS.filter(p => p.status === "live").length} live · uptime ${uptime()} · load 0.04 0.03 0.01</span>`);
   line("");
   line(`  Type <span class="g">/help</span> for commands. Try <span class="g">/list-projects</span> or <span class="g">/contact</span>.`);
+  if (touch) line(`  <span class="dim">Tap the screen to type, or use the buttons below.</span>`);
   line("");
   await sleep(500);
 
-  const auto = line();
-  await typeInto(auto, PS1, "/list-projects", 70);
-  history.push("/list-projects");
+  newPrompt();
+  await typeCommand("/list-projects");
   fast = reduced;
-  run("/list-projects");
 }
 
 function uptime() {
@@ -434,70 +456,133 @@ function uptime() {
 }
 
 // ─── prompt ──────────────────────────────────────────────────────────────
+function setInput(v) {
+  input = v;
+  kb.value = v;
+}
 function newPrompt() {
   mode = "prompt";
-  input = "";
+  setInput("");
   histIdx = -1;
   promptEl = line();
   renderPrompt();
   focusKb();
+  if (!typeahead) return;
+  const nl = typeahead.indexOf("\n");
+  const typed = nl < 0 ? typeahead : typeahead.slice(0, nl);
+  typeahead = nl < 0 ? "" : typeahead.slice(nl + 1);
+  setInput(typed);
+  renderPrompt();
+  if (nl >= 0) submit(typed);
 }
 function renderPrompt() {
-  if (promptEl) promptEl.innerHTML = PS1 + esc(input) + '<span class="cursor"></span>';
+  if (promptEl) promptEl.innerHTML = ps1() + esc(input) + '<span class="cursor"></span>';
   scroll();
 }
 function freezePrompt() {
-  if (promptEl) promptEl.innerHTML = PS1 + esc(input);
+  if (promptEl) promptEl.innerHTML = ps1() + esc(input);
   promptEl = null;
 }
 
-// ─── commands ────────────────────────────────────────────────────────────
-const COMMANDS = {
-  "help":          { desc: "show this help", fn: cmdHelp },
-  "list-projects": { desc: "browse projects (↑/↓, enter)", fn: cmdProjects, alias: ["ls", "projects"] },
-  "contact":       { desc: "how to reach me", fn: cmdContact, alias: ["email", "mail"] },
-  "about":         { desc: "who is this guy", fn: cmdAbout, alias: ["whoami"] },
-  "github":        { desc: "open github profile", fn: () => { window.open(GITHUB, "_blank", "noopener"); line(`<span class="dim">opening</span> <a href="${GITHUB}" target="_blank" rel="noopener">${GITHUB}</a>`); } },
-  "clear":         { desc: "clear the screen", fn: () => { pane.innerHTML = ""; } },
-  "exit":          { desc: "close the connection", fn: cmdExit, alias: ["logout", "quit"] },
-};
-const LOOKUP = {};
-for (const [k, v] of Object.entries(COMMANDS)) { LOOKUP[k] = k; (v.alias || []).forEach(a => LOOKUP[a] = k); }
-
-function run(raw) {
+async function submit(raw) {
   const text = raw.trim();
+  freezePrompt();
+  if (text) history.push(text);
   setWindow(text);
-  if (!text) return newPrompt();
+  mode = "busy";
+  queue = [];
+  const next = execute(text);
+  await flush();
+  if (next === "exit") return reconnect();
+  if (next === "select" || next === "contact") { mode = next; return; }
+  newPrompt();
+}
+
+// simulates the visitor typing a command (buttons, tmux tabs, boot)
+async function typeCommand(cmd) {
+  if (mode === "boot") { fast = true; return; }
+  if (mode === "busy") return;
+  if (mode === "select") { closePicker(); line(`<span class="dim">^C</span>`); newPrompt(); }
+  else if (mode === "contact") newPrompt();
+  mode = "busy";
+  setInput("");
+  for (const ch of cmd) {
+    setInput(input + ch);
+    renderPrompt();
+    await sleep(40 + Math.random() * 50);
+  }
+  await sleep(220);
+  submit(input);
+}
+
+// ─── commands ────────────────────────────────────────────────────────────
+const MAIN = {
+  "list-projects": { desc: "browse projects (↑/↓, enter)", fn: cmdProjects, alias: ["projects"] },
+  "contact":       { desc: "how to reach me", fn: () => contactCard(true), alias: ["email", "mail"] },
+  "about":         { desc: "who is this guy", fn: cmdAbout, alias: ["neofetch"] },
+  "github":        { desc: "open my github profile", fn: cmdGithub },
+  "help":          { desc: "show this help", fn: cmdHelp },
+};
+
+const SHELL = {
+  pwd:      () => line(esc(cwd.replace(/^~/, "/home/guest"))),
+  ls:       cmdLs,
+  ll:       args => cmdLs(["-la", ...args]),
+  cd:       cmdCd,
+  cat:      cmdCat,
+  open:     cmdOpen,
+  echo:     args => line(esc(expand(args.join(" ")))),
+  date:     () => line(new Date().toString()),
+  whoami:   () => line("guest"),
+  id:       () => line("uid=1000(guest) gid=1000(guest) groups=1000(guest),100(visitors)"),
+  hostname: () => line("erickmob.dev"),
+  uname:    args => line(args.includes("-a") ? "Linux erickmob 6.8.0-1015-oracle #16-Ubuntu SMP aarch64 GNU/Linux" : "Linux"),
+  uptime:   () => line(` ${time()} up ${uptime()},  1 user,  load average: 0.04, 0.03, 0.01`),
+  history:  () => history.forEach((h, i) => line(`${String(i + 1).padStart(5)}  ${esc(h)}`)),
+  which:    cmdWhich,
+  man:      ([c]) => line(c ? `No manual entry for ${esc(c)}. <span class="dim">Try</span> <span class="g">/help</span>` : "What manual page do you want?"),
+  ping:     cmdPing,
+  tmux:     () => line(`erickmob: 4 windows (created ${new Date(Date.now() - 36e5 * 5).toString().slice(0, 24)}) (attached)`),
+  git:      () => { line("fatal: not a git repository (or any of the parent directories): .git"); line(`<span class="dim">the code lives at</span> ${link(GITHUB)}`); },
+  clear:    () => { pane.innerHTML = ""; },
+  sudo:     () => line(`<span class="r">guest is not in the sudoers file. This incident will be reported.</span>`),
+  exit:     () => { line(`<span class="dim">logout</span>`); line(`<span class="dim">Connection to erickmob.dev closed.</span>`); return "exit"; },
+};
+for (const c of ["logout", "quit"]) SHELL[c] = SHELL.exit;
+for (const c of ["vim", "vi", "nvim", "nano", "emacs"]) SHELL[c] = () => line(`<span class="dim">you'd never get out. try</span> <span class="g">/list-projects</span>`);
+for (const c of ["rm", "mkdir", "touch", "mv", "cp", "chmod", "chown"]) SHELL[c] = () => line(`${c}: <span class="r">read-only file system</span> <span class="dim">— guests can look, not touch.</span>`);
+
+function lookup(name) {
+  const n = name.replace(/^\//, "").toLowerCase();
+  for (const [k, v] of Object.entries(MAIN)) if (k === n || v.alias?.includes(n)) return { key: k, fn: v.fn };
+  if (!name.startsWith("/") && SHELL[n]) return { key: n, fn: SHELL[n] };
+  return null;
+}
+
+function execute(text) {
+  if (!text) return;
   const [head, ...args] = text.split(/\s+/);
-  const name = head.replace(/^\//, "").toLowerCase();
+  const cmd = lookup(head);
+  if (!cmd) {
+    line(`<span class="r">zsh: command not found:</span> ${esc(head)} <span class="dim">— type</span> <span class="g">/help</span>`);
+    return;
+  }
+  return cmd.fn(args);
+}
 
-  if (name === "sudo") {
-    line(`<span class="r">guest is not in the sudoers file. This incident will be reported.</span>`);
-    return newPrompt();
-  }
-  if (name === "cd" || name === "cat" || name === "open") {
-    const p = findProject(args.join(" "));
-    if (p) { openProject(p); return newPrompt(); }
-  }
-  if (name === "rm") { line(`<span class="y">nice try.</span> <span class="dim">filesystem is read-only for guests.</span>`); return newPrompt(); }
-  if (name === "vim" || name === "vi" || name === "nvim") { line(`<span class="dim">you'd never get out. try</span> <span class="g">/list-projects</span>`); return newPrompt(); }
-
-  const key = LOOKUP[name];
-  if (!key) {
-    line(`<span class="r">zsh: command not found:</span> ${esc(head)} <span class="dim">— try</span> <span class="g">/help</span>`);
-    return newPrompt();
-  }
-  const res = COMMANDS[key].fn(args);
-  if (res !== "async") newPrompt();
+function expand(s) {
+  const vars = { USER: "guest", HOME: "/home/guest", SHELL: "/bin/zsh", PWD: cwd.replace(/^~/, "/home/guest"), HOSTNAME: "erickmob.dev" };
+  return s.replace(/^["']|["']$/g, "").replace(/\$(\w+)/g, (_, v) => vars[v] ?? "");
 }
 
 function cmdHelp() {
-  line(`<span class="bold">available commands</span>`);
-  for (const [k, v] of Object.entries(COMMANDS)) {
-    const al = v.alias ? `<span class="faint"> (${v.alias.join(", ")})</span>` : "";
-    line(`  <span class="g">/${k.padEnd(15)}</span>${v.desc}${al}`);
-  }
-  line(`  <span class="dim">tab completes · ↑/↓ history · ctrl+l clears</span>`);
+  line(`<span class="bold">commands</span>`);
+  for (const [k, v] of Object.entries(MAIN)) line(`  <span class="g">/${k.padEnd(15)}</span>${v.desc}`);
+  line("");
+  line(`<span class="bold">shell</span> <span class="dim">— the usual suspects work too</span>`);
+  line(`  <span class="c">ls  cd  pwd  cat  open  echo  date  whoami  uname  uptime  ping  history  clear  exit</span>`);
+  line("");
+  line(`  <span class="dim">tab completes · ↑/↓ history · ctrl+l clears · ctrl+c cancels</span>`);
 }
 
 function cmdAbout() {
@@ -516,29 +601,152 @@ function cmdAbout() {
   line(`<span class="dim">I build small, useful things end-to-end — from the firmware to the API to the UI.</span>`);
 }
 
-function cmdContact() {
-  const el = line("", "ln");
-  el.innerHTML = `<div class="card"><span class="dim">$ cat ~/.contact</span>
-<span class="c bold">email </span>  <a href="mailto:${EMAIL}">${EMAIL}</a>
-<span class="c bold">github</span>  <a href="${GITHUB}" target="_blank" rel="noopener">github.com/erickmobltda</a>
-<span class="dim">[</span><span class="g">c</span><span class="dim">] copy email  [</span><span class="g">m</span><span class="dim">] compose  [</span><span class="g">any</span><span class="dim">] continue</span></div>`;
-  el.style.whiteSpace = "pre";
-  scroll();
-  mode = "contact";
-  return "async";
+function cmdGithub() {
+  window.open(GITHUB, "_blank", "noopener");
+  line(`<span class="dim">opening</span> ${link(GITHUB)}`);
 }
 
-async function cmdExit() {
+function contactCard(interactive) {
+  const rows = [
+    `<span class="c bold">email </span>  <a href="mailto:${EMAIL}">${EMAIL}</a>`,
+    `<span class="c bold">github</span>  <a href="${GITHUB}" target="_blank" rel="noopener">github.com/erickmobltda</a>`,
+  ];
+  if (interactive) rows.push(`<a href="#" data-act="c">[c] copy email</a>  <a href="#" data-act="m">[m] compose</a>  <span class="dim">[any] continue</span>`);
+  const el = line(`<div class="card">${rows.join("\n")}</div>`);
+  el.style.whiteSpace = "pre";
+  return interactive ? "contact" : undefined;
+}
+
+async function contactKey(k) {
+  if (mode !== "contact") return;
   mode = "busy";
-  line(`<span class="dim">logout</span>`);
-  line(`<span class="dim">Connection to erickmob.dev closed.</span>`);
-  titleEl.innerHTML = "<b>guest@local</b> — zsh — 120×40";
-  await new Promise(r => setTimeout(r, 900));
-  line(`<span class="dim">…reconnecting, you can't leave that easily.</span>`);
-  await new Promise(r => setTimeout(r, 900));
-  fast = false;
-  boot();
-  return "async";
+  if (k === "c") {
+    try {
+      await navigator.clipboard.writeText(EMAIL);
+      line(`<span class="g">✔</span> copied <span class="c">${EMAIL}</span> to clipboard`);
+    } catch {
+      line(`<span class="y">clipboard blocked — select it manually</span>`);
+    }
+  } else if (k === "m") {
+    location.href = `mailto:${EMAIL}?subject=${encodeURIComponent("Hi Erick 👋")}`;
+  }
+  newPrompt();
+}
+
+function cmdWhich([c]) {
+  if (!c) return;
+  const f = lookup(c);
+  if (!f) return line(`${esc(c)} not found`);
+  line(MAIN[f.key] ? `${esc(c)}: erickmob built-in command` : `/usr/bin/${esc(c)}`);
+}
+
+function cmdPing([host = "erickmob.dev"]) {
+  if (!/(^|\.)erickmob\.dev$/.test(host)) return line(`ping: cannot resolve ${esc(host)}: Unknown host <span class="dim">(guests only reach erickmob.dev)</span>`);
+  line(`PING ${esc(host)} (185.199.108.153): 56 data bytes`);
+  for (let i = 0; i < 4; i++) {
+    pause(450);
+    line(`64 bytes from 185.199.108.153: icmp_seq=${i} ttl=57 time=${(9 + Math.random() * 6).toFixed(3)} ms`);
+  }
+  pause(200);
+  line("");
+  line(`--- ${esc(host)} ping statistics ---`);
+  line("4 packets transmitted, 4 packets received, 0.0% packet loss");
+}
+
+// ─── fake filesystem ─────────────────────────────────────────────────────
+const DOTFILES = {
+  ".zshrc": ["export EDITOR=nvim", "bindkey -v", "alias g=git", "alias ll='ls -la'", "alias projects='/list-projects'", "PROMPT='%F{green}%n@%m%f:%F{blue}%~%f$ '"],
+  ".tmux.conf": ["set -g prefix C-a", "set -g mouse on", "set -g status-style bg=#0f1a14,fg=#7fa48c", "bind | split-window -h", "bind - split-window -v"],
+};
+
+// "~"-relative path for arg, or null when it leaves the guest's home
+function resolve(arg = "") {
+  let rest = arg;
+  let parts = cwd.split("/").slice(1);
+  if (rest.startsWith("/home/guest")) { rest = rest.slice(11); parts = []; }
+  else if (rest.startsWith("/")) return null;
+  else if (rest.startsWith("~")) { rest = rest.slice(1); parts = []; }
+  for (const p of rest.split("/")) {
+    if (!p || p === ".") continue;
+    if (p === "..") { if (!parts.length) return null; parts.pop(); }
+    else parts.push(p);
+  }
+  return ["~", ...parts].join("/");
+}
+
+function node(path) {
+  if (path === "~") return { dir: true, entries: ["about.md", "contact.txt", "projects/"], hidden: Object.keys(DOTFILES) };
+  if (path === "~/projects") return { dir: true, entries: PROJECTS.map(p => p.id + "/") };
+  const m = path.match(/^~\/projects\/([^/]+)(?:\/([^/]+))?$/);
+  if (m) {
+    const p = PROJECTS.find(x => x.id === m[1]);
+    if (!p) return null;
+    const files = { "README.md": () => projectInfo(p), "repo.url": () => line(link(p.repo)) };
+    if (p.url) files["live.url"] = () => line(link(p.url));
+    if (!m[2]) return { dir: true, entries: Object.keys(files) };
+    return files[m[2]] ? { cat: files[m[2]] } : null;
+  }
+  if (path === "~/about.md") return { cat: cmdAbout };
+  if (path === "~/contact.txt") return { cat: () => contactCard(false) };
+  const dot = DOTFILES[path.slice(2)];
+  if (path.startsWith("~/") && dot) return { cat: () => dot.forEach(l => line(esc(l))) };
+  return null;
+}
+
+const isDir = nm => nm.endsWith("/") || nm === "." || nm === "..";
+const fmt = nm => isDir(nm) ? `<span class="b bold">${esc(nm)}</span>` : esc(nm);
+
+function cmdLs(args) {
+  const flags = args.filter(a => a.startsWith("-")).join("");
+  const target = args.find(a => !a.startsWith("-")) || "";
+  const path = target ? resolve(target) : cwd;
+  const n = path && node(path);
+  if (!n) return line(`ls: cannot access '${esc(target)}': No such file or directory`);
+  if (!n.dir) return line(esc(target));
+  const names = [...(flags.includes("a") ? [".", "..", ...(n.hidden || [])] : []), ...n.entries];
+  if (!flags.includes("l")) return line(names.map(fmt).join("  "));
+  const stamp = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit" }) + " " + time().slice(0, 5);
+  line(`total ${names.length * 4}`);
+  names.forEach(nm => line(`${isDir(nm) ? "drwxr-xr-x" : "-rw-r--r--"}  1 guest  guest  ${String(isDir(nm) ? 4096 : 120 + nm.length * 37).padStart(5)} ${stamp} ${fmt(nm)}`));
+}
+
+function cmdCd([target = "~"]) {
+  const path = resolve(target);
+  if (path === null) return line(`cd: permission denied: ${esc(target)}`);
+  const n = node(path);
+  if (!n) return line(`cd: no such file or directory: ${esc(target)}`);
+  if (!n.dir) return line(`cd: not a directory: ${esc(target)}`);
+  cwd = path;
+}
+
+function cmdCat(args) {
+  if (!args.length) return line(`<span class="dim">usage: cat &lt;file&gt; — try</span> cat about.md`);
+  for (const a of args) {
+    const path = resolve(a);
+    const n = path && node(path);
+    const p = !n && findProject(a);
+    if (p) projectInfo(p);
+    else if (!n) line(`cat: ${esc(a)}: No such file or directory`);
+    else if (n.dir) line(`cat: ${esc(a)}: Is a directory`);
+    else n.cat();
+  }
+}
+
+function cmdOpen([target]) {
+  const here = (!target || target === ".") && PROJECTS.find(x => cwd === "~/projects/" + x.id);
+  const p = here || findProject(target);
+  if (!p) return line(`open: ${esc(target || "")}: no such project <span class="dim">— try</span> <span class="g">/list-projects</span>`);
+  openProject(p);
+}
+
+function projectInfo(p) {
+  const [lbl, col] = STATUS_LABEL[p.status];
+  line(`<span class="bold">${esc(p.name)}</span> <span class="dim"># ${esc(p.tag)}</span>`);
+  line(esc(p.desc));
+  line(`<span class="dim">status</span>  <span class="${col}">● ${lbl}</span>`);
+  if (p.url) line(`<span class="dim">live  </span>  ${link(p.url)}`);
+  line(`<span class="dim">repo  </span>  ${link(p.repo)}`);
+  line(`<span class="dim">stack </span>  ${p.stack.map(esc).join(" · ")}`);
 }
 
 // ─── project picker ──────────────────────────────────────────────────────
@@ -550,13 +758,13 @@ function findProject(q) {
 
 function openProject(p, which = "url") {
   const href = which === "repo" ? p.repo : (p.url || p.repo);
-  line(`<span class="dim">→ opening</span> <a href="${href}" target="_blank" rel="noopener">${esc(href)}</a>`);
+  line(`<span class="dim">→ opening</span> ${link(href)}`);
   window.open(href, "_blank", "noopener");
 }
 
 function cmdProjects() {
-  mode = "select";
-  const host = line("", "ln");
+  const host = line();
+  host.style.whiteSpace = "normal";
   host.innerHTML = `
     <div class="picker">
       <div class="picker-head"><span><span class="g">❯</span> select a project</span><span><span class="sel-count">1</span>/${PROJECTS.length}</span></div>
@@ -569,7 +777,6 @@ function cmdProjects() {
       <div class="preview"></div>
       <div class="keys"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>enter</kbd> open · <kbd>r</kbd> repo · <kbd>q</kbd> quit</div>
     </div>`;
-  host.style.whiteSpace = "normal";
   const root = host.firstElementChild;
   picker = { root, idx: 0 };
   root.querySelectorAll(".pitem").forEach(li => {
@@ -581,8 +788,7 @@ function cmdProjects() {
     });
   });
   select(0);
-  scroll();
-  return "async";
+  return "select";
 }
 
 function select(i) {
@@ -597,7 +803,7 @@ function select(i) {
   });
   picker.root.querySelector(".sel-count").textContent = picker.idx + 1;
   const [lbl, col] = STATUS_LABEL[p.status];
-  const live = p.url ? `<a href="${p.url}" target="_blank" rel="noopener">${esc(p.url.replace(/^https:\/\//, ""))}</a>` : `<span class="faint">—</span>`;
+  const live = p.url ? link(p.url) : `<span class="faint">—</span>`;
   picker.root.querySelector(".preview").innerHTML = `
     <h3>${esc(p.name)}</h3>
     <div class="tag"># ${esc(p.tag)}</div>
@@ -624,40 +830,46 @@ function closePicker() {
 
 // ─── keyboard ────────────────────────────────────────────────────────────
 function complete() {
-  const q = input.replace(/^\//, "");
-  const hits = Object.keys(COMMANDS).filter(k => k.startsWith(q));
-  if (hits.length === 1) input = "/" + hits[0];
-  else if (hits.length > 1) {
-    freezePrompt();
-    line(hits.map(h => `<span class="g">/${h}</span>`).join("   "));
-    promptEl = line();
+  if (!input.includes(" ")) {
+    const slash = input.startsWith("/");
+    const q = input.replace(/^\//, "");
+    const names = slash ? Object.keys(MAIN) : [...Object.keys(MAIN), ...Object.keys(SHELL)];
+    return offer("", names.filter(n => n.startsWith(q)).map(n => (MAIN[n] ? "/" : "") + n));
   }
+  const head = input.slice(0, input.lastIndexOf(" ") + 1);
+  const token = input.slice(head.length);
+  const dirPart = token.slice(0, token.lastIndexOf("/") + 1);
+  const base = token.slice(dirPart.length);
+  const path = dirPart ? resolve(dirPart) : cwd;
+  const n = path && node(path);
+  if (!n?.dir) return;
+  const entries = [...n.entries, ...(base.startsWith(".") ? n.hidden || [] : [])];
+  offer(head, entries.filter(e => e.startsWith(base)).map(e => dirPart + e));
+}
+
+function offer(head, hits) {
+  if (!hits.length) return;
+  if (hits.length === 1) {
+    setInput(head + hits[0] + (hits[0].endsWith("/") ? "" : " "));
+    return renderPrompt();
+  }
+  let pre = hits[0];
+  for (const h of hits) while (!h.startsWith(pre)) pre = pre.slice(0, -1);
+  if (head + pre !== input) { setInput(head + pre); return renderPrompt(); }
+  freezePrompt();
+  line(hits.map(h => fmt(h.slice(h.lastIndexOf("/", h.length - 2) + 1))).join("   "));
+  promptEl = line();
   renderPrompt();
 }
 
 document.addEventListener("keydown", e => {
-  if (e.metaKey || (e.ctrlKey && e.key !== "l" && e.key !== "c")) return;
+  if (e.metaKey || e.altKey) return;
+  const k = e.key;
 
   if (mode === "boot") { fast = true; e.preventDefault(); return; }
-  if (mode === "busy") return;
-
-  if (mode === "contact") {
-    e.preventDefault();
-    const k = e.key.toLowerCase();
-    if (k === "c") {
-      navigator.clipboard?.writeText(EMAIL).then(
-        () => line(`<span class="g">✔</span> copied <span class="c">${EMAIL}</span> to clipboard`),
-        () => line(`<span class="y">clipboard blocked — select it manually</span>`));
-    } else if (k === "m") {
-      location.href = `mailto:${EMAIL}?subject=${encodeURIComponent("Hi Erick 👋")}`;
-    }
-    setTimeout(newPrompt, k === "c" ? 60 : 0);
-    mode = "busy";
-    return;
-  }
+  if (mode === "contact") { e.preventDefault(); contactKey(k.toLowerCase()); return; }
 
   if (mode === "select") {
-    const k = e.key;
     if (k === "ArrowDown" || k === "j" || (k === "Tab" && !e.shiftKey)) { e.preventDefault(); select(picker.idx + 1); }
     else if (k === "ArrowUp" || k === "k" || (k === "Tab" && e.shiftKey)) { e.preventDefault(); select(picker.idx - 1); }
     else if (k === "Home" || k === "g") { e.preventDefault(); select(0); }
@@ -670,66 +882,73 @@ document.addEventListener("keydown", e => {
     return;
   }
 
-  if (mode !== "prompt") return;
-  const k = e.key;
-  if (e.ctrlKey && k === "l") { e.preventDefault(); pane.innerHTML = ""; promptEl = line(); renderPrompt(); return; }
-  if (e.ctrlKey && k === "c") { e.preventDefault(); input += "^C"; freezePrompt(); newPrompt(); return; }
-  if (k === "Enter") {
+  if (mode === "busy") {
+    if (e.ctrlKey) return;
     e.preventDefault();
-    const cmd = input;
-    freezePrompt();
-    if (cmd.trim()) history.push(cmd);
-    run(cmd);
-  } else if (k === "Backspace") { e.preventDefault(); input = input.slice(0, -1); renderPrompt(); }
+    if (k === "Enter") typeahead += "\n";
+    else if (k === "Backspace") typeahead = typeahead.slice(0, -1);
+    else if (k.length === 1) typeahead += k;
+    return;
+  }
+
+  if (e.ctrlKey) {
+    if (k === "l") { e.preventDefault(); pane.innerHTML = ""; promptEl = line(); renderPrompt(); }
+    else if (k === "u") { e.preventDefault(); setInput(""); renderPrompt(); }
+    else if (k === "c" && !getSelection().toString()) { e.preventDefault(); setInput(input + "^C"); freezePrompt(); newPrompt(); }
+    return;
+  }
+  // printable keys land in the hidden input, which drives the prompt
+  if (document.activeElement !== kb) kb.focus({ preventScroll: true });
+
+  if (k === "Enter") { e.preventDefault(); submit(input); }
   else if (k === "Tab") { e.preventDefault(); complete(); }
   else if (k === "ArrowUp") {
     e.preventDefault();
     if (!history.length) return;
     histIdx = histIdx < 0 ? history.length - 1 : Math.max(0, histIdx - 1);
-    input = history[histIdx]; renderPrompt();
+    setInput(history[histIdx]); renderPrompt();
   } else if (k === "ArrowDown") {
     e.preventDefault();
     if (histIdx < 0) return;
     histIdx++;
-    if (histIdx >= history.length) { histIdx = -1; input = ""; } else input = history[histIdx];
+    if (histIdx >= history.length) { histIdx = -1; setInput(""); } else setInput(history[histIdx]);
     renderPrompt();
-  } else if (k.length === 1) { e.preventDefault(); input += k; renderPrompt(); }
+  } else if (k === "ArrowLeft" || k === "ArrowRight" || k === "Home" || k === "End") e.preventDefault();
 });
 
-// mobile soft keyboards don't always fire useful keydown — read from the hidden input
 kb.addEventListener("input", () => {
-  if (mode === "prompt" && kb.value) { input += kb.value; renderPrompt(); }
-  kb.value = "";
+  if (mode === "prompt") { input = kb.value; renderPrompt(); return; }
+  // soft keyboards insert text without a usable keydown: keep it as typeahead too
+  if (mode === "busy" && kb.value.startsWith(input)) typeahead += kb.value.slice(input.length);
+  kb.value = input;
+});
+// mobile keyboards that don't send a usable Enter keydown submit the form instead
+document.getElementById("kbf").addEventListener("submit", e => {
+  e.preventDefault();
+  if (mode === "prompt") submit(input);
 });
 function focusKb() {
-  if (matchMedia("(pointer: fine)").matches) kb.focus({ preventScroll: true });
+  if (!touch) kb.focus({ preventScroll: true });
 }
-pane.addEventListener("click", () => {
+pane.addEventListener("click", e => {
+  const act = e.target.closest("[data-act]");
+  if (act) { e.preventDefault(); contactKey(act.dataset.act); return; }
+  if (e.target.closest("a")) return;
   if (mode === "boot") { fast = true; return; }
-  if (mode === "contact") { mode = "busy"; newPrompt(); return; }
+  if (mode === "contact") { contactKey(""); return; }
   if (!getSelection().toString()) kb.focus({ preventScroll: true });
 });
+window.visualViewport?.addEventListener("resize", scroll);
 
-function exec(cmd) {
-  if (mode === "boot") { fast = true; return; }
-  if (mode === "select") { closePicker(); line(`<span class="dim">^C</span>`); }
-  else if (mode === "contact") { /* fall through */ }
-  else if (mode !== "prompt") return;
-  if (!promptEl) promptEl = line();
-  input = cmd;
-  freezePrompt();
-  history.push(cmd);
-  run(cmd);
-}
 document.querySelectorAll("[data-cmd]").forEach(b => b.addEventListener("click", e => {
   e.stopPropagation();
-  exec(b.dataset.cmd || "clear");
+  typeCommand(b.dataset.cmd);
 }));
 
 // ─── tmux status ─────────────────────────────────────────────────────────
 function setWindow(cmd) {
-  const n = LOOKUP[(cmd.split(/\s+/)[0] || "").replace(/^\//, "").toLowerCase()];
-  const target = { "list-projects": 1, contact: 2, about: 3 }[n] ?? 0;
+  const key = lookup(cmd.split(/\s+/)[0] || "")?.key;
+  const target = { "list-projects": 1, contact: 2, about: 3 }[key] ?? 0;
   document.querySelectorAll("#wins .win").forEach((w, i) => {
     w.classList.toggle("on", i === target);
     w.textContent = w.textContent.replace(/\*$/, "") + (i === target ? "*" : "");
@@ -742,6 +961,14 @@ function tick() {
     d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 tick(); setInterval(tick, 15000);
+
+async function reconnect() {
+  titleEl.innerHTML = "<b>guest@local</b> — zsh — 120×40";
+  await sleep(900);
+  line(`<span class="dim">…reconnecting, you can't leave that easily.</span>`);
+  await sleep(900);
+  boot();
+}
 
 // real reachability check of the shared backend (opaque response is enough)
 const apiEl = document.getElementById("api");
