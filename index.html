@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>erickmob.dev</title>
+<meta name="description" content="Erick Mob — software engineer. Side projects, tools and hardware hacks.">
+<meta name="theme-color" content="#0b0e14">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%230b0e14'/><text x='10' y='44' font-family='monospace' font-size='34' fill='%2338e07b'>&gt;_</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07090d;
+    --term: #0b0e14;
+    --term-2: #0f131b;
+    --line: #1c2230;
+    --fg: #c9d1d9;
+    --dim: #6b7485;
+    --faint: #3a4253;
+    --green: #38e07b;
+    --cyan: #5ccfe6;
+    --blue: #73a7ff;
+    --yellow: #ffcc66;
+    --red: #ff6b6b;
+    --magenta: #d4a6ff;
+    --orange: #ffa759;
+    --sel: #16202e;
+    --glow: 0 0 18px rgba(56, 224, 123, .25);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: radial-gradient(1200px 700px at 20% -10%, #10202a 0%, transparent 60%),
+                radial-gradient(900px 600px at 110% 110%, #1a1426 0%, transparent 55%),
+                var(--bg);
+    color: var(--fg);
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  ::selection { background: var(--green); color: var(--term); }
+
+  .wrap {
+    height: 100dvh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 28px;
+  }
+  .window {
+    width: min(1180px, 100%);
+    height: min(820px, 100%);
+    display: flex; flex-direction: column;
+    background: var(--term);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 40px 120px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.02) inset;
+    overflow: hidden;
+    position: relative;
+  }
+  /* scanlines + vignette */
+  .window::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(to bottom, rgba(255,255,255,.018) 0 1px, transparent 1px 3px);
+    mix-blend-mode: overlay;
+  }
+
+  .titlebar {
+    height: 38px; flex: none;
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 14px;
+    background: linear-gradient(#141923, #10141c);
+    border-bottom: 1px solid var(--line);
+    user-select: none;
+  }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .dot.r { background: #ff5f57; } .dot.y { background: #febc2e; } .dot.g { background: #28c840; }
+  .titlebar .title {
+    flex: 1; text-align: center; color: var(--dim); font-size: 12px;
+    margin-right: 52px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .titlebar .title b { color: var(--fg); font-weight: 500; }
+
+  .pane {
+    flex: 1; min-height: 0;
+    overflow-y: auto;
+    padding: 18px 22px 10px;
+    scrollbar-width: thin; scrollbar-color: var(--faint) transparent;
+    cursor: text;
+  }
+  .pane::-webkit-scrollbar { width: 8px; }
+  .pane::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 4px; }
+
+  .ln { white-space: pre-wrap; word-break: break-word; min-height: 1.55em; }
+  .dim { color: var(--dim); } .faint { color: var(--faint); }
+  .g { color: var(--green); } .c { color: var(--cyan); } .b { color: var(--blue); }
+  .y { color: var(--yellow); } .r { color: var(--red); } .m { color: var(--magenta); } .o { color: var(--orange); }
+  .bold { font-weight: 700; }
+  a { color: var(--cyan); text-decoration: none; border-bottom: 1px dashed rgba(92,207,230,.4); }
+  a:hover { color: var(--term); background: var(--cyan); border-bottom-color: transparent; }
+
+  .prompt-user { color: var(--green); font-weight: 700; }
+  .prompt-path { color: var(--blue); font-weight: 700; }
+  .cursor {
+    display: inline-block; width: .6em; height: 1.2em; vertical-align: -.2em;
+    background: var(--green); box-shadow: var(--glow);
+    animation: blink 1.05s steps(1) infinite;
+  }
+  .cursor.solid { animation: none; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .banner {
+    color: var(--green); text-shadow: var(--glow);
+    font-weight: 700; line-height: 1.12; font-size: 13px;
+    white-space: pre; overflow: hidden;
+  }
+  .banner .acc { color: var(--cyan); text-shadow: 0 0 18px rgba(92,207,230,.3); }
+
+  .bar { color: var(--green); }
+
+  /* project picker */
+  .picker {
+    display: grid; grid-template-columns: minmax(260px, 360px) 1fr;
+    gap: 0; margin: 6px 0 4px;
+    border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+    background: var(--term-2);
+  }
+  .picker.done { opacity: .55; }
+  .picker-head {
+    grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 12px;
+    padding: 6px 12px; border-bottom: 1px solid var(--line);
+    background: #111621; color: var(--dim); font-size: 12px;
+  }
+  .picker-head .g { font-weight: 700; }
+  .plist { list-style: none; margin: 0; padding: 6px 0; border-right: 1px solid var(--line); }
+  .pitem {
+    display: flex; align-items: center; gap: 10px;
+    padding: 3px 12px; cursor: pointer; white-space: nowrap;
+    border-left: 2px solid transparent;
+  }
+  .pitem .arrow { width: 1ch; color: var(--green); }
+  .pitem .name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .pitem .kind { color: var(--faint); font-size: 12px; }
+  .pitem:hover { background: rgba(255,255,255,.025); }
+  .pitem.active { background: var(--sel); border-left-color: var(--green); }
+  .pitem.active .name { color: #fff; font-weight: 700; }
+  .pitem.active .kind { color: var(--dim); }
+  .st { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .st.live { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .st.repo { background: var(--blue); }
+  .st.hw   { background: var(--orange); }
+  .st.wip  { background: var(--yellow); }
+
+  .preview { padding: 12px 16px; min-width: 0; }
+  .preview h3 { margin: 0 0 2px; font-size: 16px; color: #fff; }
+  .preview .tag { color: var(--dim); font-size: 12px; margin-bottom: 10px; }
+  .preview p { margin: 0 0 12px; }
+  .kv { display: grid; grid-template-columns: 8ch 1fr; gap: 2px 12px; font-size: 13px; }
+  .kv dt { color: var(--dim); } .kv dd { margin: 0; min-width: 0; word-break: break-all; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-size: 11.5px; padding: 0 7px; border-radius: 4px;
+    background: rgba(115,167,255,.1); color: var(--blue); border: 1px solid rgba(115,167,255,.2);
+  }
+  .keys { padding: 6px 12px; grid-column: 1 / -1; border-top: 1px solid var(--line); color: var(--dim); font-size: 12px; }
+  kbd {
+    font-family: inherit; font-size: 11px; padding: 0 5px; border-radius: 3px;
+    border: 1px solid var(--faint); border-bottom-width: 2px; color: var(--fg); background: #141a25;
+  }
+
+  .card {
+    display: inline-block; margin: 4px 0; padding: 10px 16px;
+    border: 1px solid var(--line); border-left: 3px solid var(--green); border-radius: 6px;
+    background: var(--term-2);
+  }
+
+  /* tmux status */
+  .status {
+    flex: none; height: 26px; display: flex; align-items: stretch;
+    background: #0f1a14; border-top: 1px solid #173123;
+    font-size: 12.5px; user-select: none; white-space: nowrap; overflow: hidden;
+  }
+  .status .sess { background: var(--green); color: #06110a; font-weight: 800; padding: 0 12px; display: flex; align-items: center; }
+  .status .wins { display: flex; align-items: center; padding: 0 6px; gap: 2px; flex: 1; overflow: hidden; }
+  .status .win { padding: 0 8px; color: #7fa48c; cursor: pointer; border-radius: 3px; }
+  .status .win:hover { color: #d7f5e1; }
+  .status .win.on { color: #06110a; background: #8bf0b2; font-weight: 700; }
+  .status .right { display: flex; align-items: center; gap: 14px; padding: 0 12px; color: #7fa48c; }
+  .status .right .host { background: #1d3a29; color: #bff3d3; padding: 0 10px; margin-right: -12px; height: 100%; display: flex; align-items: center; }
+
+  /* mobile command bar */
+  .quick { display: none; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line); background: #0d1118; overflow-x: auto; flex: none; }
+  .quick button {
+    font: inherit; font-size: 12.5px; color: var(--green); background: transparent;
+    border: 1px solid #1f3b2b; border-radius: 6px; padding: 5px 10px; white-space: nowrap; cursor: pointer;
+  }
+  .quick button:active { background: #12271b; }
+
+  #kb { position: fixed; opacity: 0; pointer-events: none; left: -9999px; top: 0; }
+
+  @media (max-width: 760px) {
+    body { font-size: 12.5px; }
+    .wrap { padding: 0; }
+    .window { height: 100%; border-radius: 0; border: 0; }
+    .pane { padding: 12px 16px 8px; }
+    .banner { font-size: 7.4px; }
+    .picker { grid-template-columns: 1fr; }
+    .plist { border-right: 0; border-bottom: 1px solid var(--line); }
+    .quick { display: flex; }
+    .status .wins .win:not(.on) { display: none; }
+    .status .right .clock { display: none; }
+    .titlebar .title { margin-right: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cursor { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="window" id="window">
+    <div class="titlebar">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <div class="title" id="title"><b>guest@local</b> — zsh — 120×40</div>
+    </div>
+    <div class="pane" id="pane" aria-live="polite"></div>
+    <div class="quick" id="quick">
+      <button data-cmd="/list-projects">/list-projects</button>
+      <button data-cmd="/contact">/contact</button>
+      <button data-cmd="/about">/about</button>
+      <button data-cmd="/help">/help</button>
+      <button data-cmd="clear">clear</button>
+    </div>
+    <div class="status">
+      <div class="sess">[erickmob]</div>
+      <div class="wins" id="wins">
+        <span class="win on" data-cmd="">0:ssh*</span>
+        <span class="win" data-cmd="/list-projects">1:projects</span>
+        <span class="win" data-cmd="/contact">2:contact</span>
+        <span class="win" data-cmd="/about">3:about</span>
+      </div>
+      <div class="right">
+        <span id="api" title="api.erickmob.dev">◌ api</span>
+        <span class="clock" id="clock"></span>
+        <span class="host">erickmob.dev</span>
+      </div>
+    </div>
+  </div>
+</div>
+<input id="kb" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="terminal input">
+
+<script>
+// ─── data ────────────────────────────────────────────────────────────────
+const EMAIL = "erickmobltda@gmail.com";
+const GITHUB = "https://github.com/erickmobltda";
+
+// status: live | repo | hw | wip
+const PROJECTS = [
+  { id: "reeltrip", name: "ReelTrip", kind: "web app", status: "live",
+    tag: "travel reels → structured trip notes",
+    desc: "Paste a travel reel from Instagram, YouTube or TikTok and get a clean, structured travel note (places, tips, POIs) saved into one of your trips.",
+    stack: ["React", "Vite", "Firebase", "Claude"], url: "https://reeltrip.erickmob.dev", repo: GITHUB + "/reeltrip" },
+  { id: "labsync", name: "LabSync", kind: "web app", status: "live",
+    tag: "blood tests → biomarker trends",
+    desc: "Upload blood-test PDFs, extract biomarkers automatically with AI and track how each one trends over time.",
+    stack: ["React", "Vite", "Firebase", "Claude"], url: "https://labsync.erickmob.dev", repo: GITHUB + "/labsync" },
+  { id: "ledgenator", name: "Ledgenator", kind: "web app", status: "live",
+    tag: "multi-broker investment ledger",
+    desc: "Investment tracker across brokers — stocks, ETFs, FIIs, crypto — with BRL/USD bookkeeping and an animated dashboard.",
+    stack: ["React", "TypeScript", "Firebase", "Recharts"], url: "https://ledgenator.erickmob.dev", repo: GITHUB + "/ledgenator" },
+  { id: "compartilhator", name: "Compartilhator", kind: "web app", status: "live",
+    tag: "one link → posts for every network",
+    desc: "Turns a video link (Reels, YouTube, TikTok) or plain text into ready-to-publish posts for Instagram, LinkedIn, Facebook and Newsletter — one-click copy each.",
+    stack: ["React", "Vite", "Firebase", "LLM"], url: "https://compartilhator.erickmob.dev", repo: GITHUB + "/compartilhator" },
+  { id: "smokership", name: "Smokership", kind: "web app", status: "live",
+    tag: "discover, rate & log cigars",
+    desc: "Discover, rate and keep track of your cigars. A revival of the 2021 Smokership app, rebuilt on the shared erickmob stack.",
+    stack: ["React", "TypeScript", "Firebase"], url: "https://smokership.erickmob.dev", repo: GITHUB + "/smokership" },
+  { id: "erickmob-api", name: "erickmob-api", kind: "backend", status: "live",
+    tag: "the one backend behind everything",
+    desc: "Single FastAPI backend for all apps: verifies Firebase logins, holds every API key, serves AI, market data and files. Runs on an ARM VM behind a Cloudflare Tunnel.",
+    stack: ["Python", "FastAPI", "Oracle Cloud", "Cloudflare"], url: "https://api.erickmob.dev/health", repo: GITHUB + "/erickmob-api" },
+  { id: "capita-maeva", name: "Capitã Maeva", kind: "game", status: "live",
+    tag: "pixel-art runner you play with your body",
+    desc: "Browser pixel-art game for kids aged 4–6. Plays on TV, desktop or phone — or with your body: an ESP32 + motion sensor becomes a Bluetooth keyboard. Jump IRL, the hero jumps.",
+    stack: ["HTML5 Canvas", "ESP32", "BLE HID"], url: "https://erickmobltda.github.io/capita_maeva_game/", repo: GITHUB + "/capita_maeva_game" },
+  { id: "agent-hub", name: "agent-hub", kind: "cli", status: "repo",
+    tag: "claude code agents on tmux + worktrees",
+    desc: "A hub for Claude Code agents on tmux. Each agent gets its own window, git worktree and branch; an fzf dashboard shows every agent's state. Pure bash — tmux is the source of truth.",
+    stack: ["bash", "tmux", "fzf", "git", "Claude Code"], url: null, repo: GITHUB + "/agent-hub" },
+  { id: "painel", name: "Painel ESP32", kind: "firmware", status: "hw",
+    tag: "touchscreen kids' console",
+    desc: "Firmware for a Waveshare ESP32 3.5\" touch board: music covers that play on Spotify/Alexa, a runner game, painting, reading and word-building apps for a small kid.",
+    stack: ["C++", "Arduino", "ESP32", "LVGL"], url: null, repo: GITHUB + "/painel-esp32" },
+  { id: "zmk", name: "zmk-config", kind: "firmware", status: "hw",
+    tag: "custom split keyboard firmware",
+    desc: "ZMK config for a roBa / Charybdis split keyboard with trackball over ESB, plus a nRF52840 dongle — layers, combos and build tooling.",
+    stack: ["ZMK", "Zephyr", "nRF52840"], url: null, repo: GITHUB + "/zmk-config-generic" },
+  { id: "inventory", name: "Electronics Inventory", kind: "static", status: "repo",
+    tag: "what's in the parts drawer",
+    desc: "Static page listing my electronic components — which are free and which are in use by projects. Data validated and deployed on every push.",
+    stack: ["HTML", "JSON", "GitHub Actions"], url: null, repo: GITHUB + "/eletronic-inventory" },
+];
+
+const STATUS_LABEL = { live: ["live", "g"], repo: ["source", "b"], hw: ["hardware", "o"], wip: ["wip", "y"] };
+
+// ─── terminal core ───────────────────────────────────────────────────────
+const pane = document.getElementById("pane");
+const kb = document.getElementById("kb");
+const titleEl = document.getElementById("title");
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+let mode = "boot";           // boot | prompt | select | busy
+let fast = reduced;          // skip animations
+let input = "";
+let history = [];
+let histIdx = -1;
+let promptEl = null;
+let picker = null;
+
+const sleep = ms => new Promise(r => setTimeout(r, fast ? 0 : ms));
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+const scroll = () => { pane.scrollTop = pane.scrollHeight; };
+
+function line(html = "", cls = "ln") {
+  const el = document.createElement("div");
+  el.className = cls;
+  el.innerHTML = html;
+  pane.appendChild(el);
+  scroll();
+  return el;
+}
+const PS1_LOCAL = `<span class="prompt-user">guest@local</span><span class="dim">:</span><span class="prompt-path">~</span><span class="dim">$</span> `;
+const PS1 = `<span class="prompt-user">guest@erickmob</span><span class="dim">:</span><span class="prompt-path">~</span><span class="dim">$</span> `;
+
+async function typeInto(el, prefix, text, speed = 55) {
+  for (let i = 1; i <= text.length; i++) {
+    el.innerHTML = prefix + esc(text.slice(0, i)) + '<span class="cursor solid"></span>';
+    scroll();
+    await sleep(speed + Math.random() * speed * 0.8);
+  }
+  await sleep(260);
+  el.innerHTML = prefix + esc(text);
+}
+
+async function spinner(label, ms, okText = "ok") {
+  const frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+  const el = line();
+  const end = Date.now() + (fast ? 0 : ms);
+  let i = 0;
+  while (Date.now() < end) {
+    el.innerHTML = `<span class="c">${frames[i++ % frames.length]}</span> ${label}`;
+    await new Promise(r => setTimeout(r, 70));
+    if (fast) break;
+  }
+  el.innerHTML = `<span class="g">✔</span> ${label} <span class="dim">${okText}</span>`;
+}
+
+async function progress(label, ms) {
+  const el = line();
+  const W = 28, steps = 24;
+  for (let s = 0; s <= steps; s++) {
+    const n = Math.round((s / steps) * W);
+    el.innerHTML = `${label} <span class="bar">${"█".repeat(n)}</span><span class="faint">${"░".repeat(W - n)}</span> <span class="dim">${String(Math.round(s / steps * 100)).padStart(3)}%</span>`;
+    await sleep(ms / steps);
+  }
+}
+
+// ─── boot sequence ───────────────────────────────────────────────────────
+const BANNER = String.raw`
+ ███████╗██████╗ ██╗ ██████╗██╗  ██╗███╗   ███╗ ██████╗ ██████╗
+ ██╔════╝██╔══██╗██║██╔════╝██║ ██╔╝████╗ ████║██╔═══██╗██╔══██╗
+ █████╗  ██████╔╝██║██║     █████╔╝ ██╔████╔██║██║   ██║██████╔╝
+ ██╔══╝  ██╔══██╗██║██║     ██╔═██╗ ██║╚██╔╝██║██║   ██║██╔══██╗
+ ███████╗██║  ██║██║╚██████╗██║  ██╗██║ ╚═╝ ██║╚██████╔╝██████╔╝
+ ╚══════╝╚═╝  ╚═╝╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝ ╚═════╝ ╚═════╝ <span class="acc">.dev</span>`;
+
+function fingerprint() {
+  const abc = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  return Array.from({ length: 43 }, () => abc[Math.random() * 64 | 0]).join("");
+}
+
+async function boot() {
+  mode = "boot";
+  pane.innerHTML = "";
+  titleEl.innerHTML = "<b>guest@local</b> — zsh — 120×40";
+  line(`<span class="dim">Last login: ${new Date(Date.now() - 864e5 * 3).toString().slice(0, 24)} on ttys001</span>`);
+  const skip = line(`<span class="faint">(press any key to skip)</span>`);
+  await sleep(500);
+
+  const cmd = line();
+  await typeInto(cmd, PS1_LOCAL, "ssh guest@erickmob.dev", 45);
+  skip.remove();
+
+  line(`<span class="dim">debug1: Connecting to erickmob.dev [443] port 22.</span>`);
+  await sleep(380);
+  line(`<span class="dim">debug1: Connection established.</span>`);
+  await sleep(220);
+  line(`<span class="dim">debug1: Remote protocol version 2.0, remote software version OpenSSH_9.9</span>`);
+  await sleep(200);
+  line(`<span class="dim">debug1: kex: algorithm: </span>sntrup761x25519-sha512<span class="dim"> · cipher: </span>chacha20-poly1305`);
+  await sleep(260);
+  line(`<span class="dim">debug1: Server host key: ssh-ed25519 SHA256:</span><span class="y">${fingerprint()}</span>`);
+  await sleep(300);
+  await spinner("Authenticating with public key <span class='m'>\"guest@visitor\"</span>", 900, "accepted");
+  await spinner("Establishing encrypted channel", 650, "secure");
+  await spinner("Allocating pty · attaching tmux session <span class='g'>erickmob</span>", 600, "attached");
+  await progress("Syncing projects", 800);
+  await sleep(250);
+
+  titleEl.innerHTML = "<b>guest@erickmob</b> — tmux — 120×40";
+  pane.innerHTML = "";
+  line(BANNER, "banner");
+  line("");
+  line(`  <span class="bold">Erick Mob</span> <span class="dim">·</span> software engineer <span class="dim">·</span> builder of side projects, tools & tiny hardware`);
+  line(`  <span class="dim">${PROJECTS.length} projects · ${PROJECTS.filter(p => p.status === "live").length} live · uptime ${uptime()} · load 0.04 0.03 0.01</span>`);
+  line("");
+  line(`  Type <span class="g">/help</span> for commands. Try <span class="g">/list-projects</span> or <span class="g">/contact</span>.`);
+  line("");
+  await sleep(500);
+
+  const auto = line();
+  await typeInto(auto, PS1, "/list-projects", 70);
+  history.push("/list-projects");
+  fast = reduced;
+  run("/list-projects");
+}
+
+function uptime() {
+  const d = Math.floor((Date.now() - new Date("2026-01-01").getTime()) / 864e5);
+  return `${d} days`;
+}
+
+// ─── prompt ──────────────────────────────────────────────────────────────
+function newPrompt() {
+  mode = "prompt";
+  input = "";
+  histIdx = -1;
+  promptEl = line();
+  renderPrompt();
+  focusKb();
+}
+function renderPrompt() {
+  if (promptEl) promptEl.innerHTML = PS1 + esc(input) + '<span class="cursor"></span>';
+  scroll();
+}
+function freezePrompt() {
+  if (promptEl) promptEl.innerHTML = PS1 + esc(input);
+  promptEl = null;
+}
+
+// ─── commands ────────────────────────────────────────────────────────────
+const COMMANDS = {
+  "help":          { desc: "show this help", fn: cmdHelp },
+  "list-projects": { desc: "browse projects (↑/↓, enter)", fn: cmdProjects, alias: ["ls", "projects"] },
+  "contact":       { desc: "how to reach me", fn: cmdContact, alias: ["email", "mail"] },
+  "about":         { desc: "who is this guy", fn: cmdAbout, alias: ["whoami"] },
+  "github":        { desc: "open github profile", fn: () => { window.open(GITHUB, "_blank", "noopener"); line(`<span class="dim">opening</span> <a href="${GITHUB}" target="_blank" rel="noopener">${GITHUB}</a>`); } },
+  "clear":         { desc: "clear the screen", fn: () => { pane.innerHTML = ""; } },
+  "exit":          { desc: "close the connection", fn: cmdExit, alias: ["logout", "quit"] },
+};
+const LOOKUP = {};
+for (const [k, v] of Object.entries(COMMANDS)) { LOOKUP[k] = k; (v.alias || []).forEach(a => LOOKUP[a] = k); }
+
+function run(raw) {
+  const text = raw.trim();
+  setWindow(text);
+  if (!text) return newPrompt();
+  const [head, ...args] = text.split(/\s+/);
+  const name = head.replace(/^\//, "").toLowerCase();
+
+  if (name === "sudo") {
+    line(`<span class="r">guest is not in the sudoers file. This incident will be reported.</span>`);
+    return newPrompt();
+  }
+  if (name === "cd" || name === "cat" || name === "open") {
+    const p = findProject(args.join(" "));
+    if (p) { openProject(p); return newPrompt(); }
+  }
+  if (name === "rm") { line(`<span class="y">nice try.</span> <span class="dim">filesystem is read-only for guests.</span>`); return newPrompt(); }
+  if (name === "vim" || name === "vi" || name === "nvim") { line(`<span class="dim">you'd never get out. try</span> <span class="g">/list-projects</span>`); return newPrompt(); }
+
+  const key = LOOKUP[name];
+  if (!key) {
+    line(`<span class="r">zsh: command not found:</span> ${esc(head)} <span class="dim">— try</span> <span class="g">/help</span>`);
+    return newPrompt();
+  }
+  const res = COMMANDS[key].fn(args);
+  if (res !== "async") newPrompt();
+}
+
+function cmdHelp() {
+  line(`<span class="bold">available commands</span>`);
+  for (const [k, v] of Object.entries(COMMANDS)) {
+    const al = v.alias ? `<span class="faint"> (${v.alias.join(", ")})</span>` : "";
+    line(`  <span class="g">/${k.padEnd(15)}</span>${v.desc}${al}`);
+  }
+  line(`  <span class="dim">tab completes · ↑/↓ history · ctrl+l clears</span>`);
+}
+
+function cmdAbout() {
+  const rows = [
+    ["user", "Erick Mob"],
+    ["role", "Senior Software Engineer"],
+    ["focus", "backend · distributed systems · dev tooling"],
+    ["stack", "Java · Python · TypeScript · React · gRPC"],
+    ["infra", "Oracle Cloud ARM · Cloudflare · Firebase"],
+    ["hacks", "ESP32 · ZMK split keyboards"],
+    ["shell", "zsh + tmux + nvim, obviously"],
+  ];
+  line(`<span class="g bold">guest@erickmob</span>`);
+  line(`<span class="faint">──────────────</span>`);
+  rows.forEach(([k, v]) => line(`<span class="c bold">${k.padEnd(6)}</span> ${v}`));
+  line(`<span class="dim">I build small, useful things end-to-end — from the firmware to the API to the UI.</span>`);
+}
+
+function cmdContact() {
+  const el = line("", "ln");
+  el.innerHTML = `<div class="card"><span class="dim">$ cat ~/.contact</span>
+<span class="c bold">email </span>  <a href="mailto:${EMAIL}">${EMAIL}</a>
+<span class="c bold">github</span>  <a href="${GITHUB}" target="_blank" rel="noopener">github.com/erickmobltda</a>
+<span class="dim">[</span><span class="g">c</span><span class="dim">] copy email  [</span><span class="g">m</span><span class="dim">] compose  [</span><span class="g">any</span><span class="dim">] continue</span></div>`;
+  el.style.whiteSpace = "pre";
+  scroll();
+  mode = "contact";
+  return "async";
+}
+
+async function cmdExit() {
+  mode = "busy";
+  line(`<span class="dim">logout</span>`);
+  line(`<span class="dim">Connection to erickmob.dev closed.</span>`);
+  titleEl.innerHTML = "<b>guest@local</b> — zsh — 120×40";
+  await new Promise(r => setTimeout(r, 900));
+  line(`<span class="dim">…reconnecting, you can't leave that easily.</span>`);
+  await new Promise(r => setTimeout(r, 900));
+  fast = false;
+  boot();
+  return "async";
+}
+
+// ─── project picker ──────────────────────────────────────────────────────
+function findProject(q) {
+  q = (q || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!q) return null;
+  return PROJECTS.find(p => p.id.replace(/-/g, "") === q || p.name.toLowerCase().replace(/[^a-z0-9]/g, "").startsWith(q));
+}
+
+function openProject(p, which = "url") {
+  const href = which === "repo" ? p.repo : (p.url || p.repo);
+  line(`<span class="dim">→ opening</span> <a href="${href}" target="_blank" rel="noopener">${esc(href)}</a>`);
+  window.open(href, "_blank", "noopener");
+}
+
+function cmdProjects() {
+  mode = "select";
+  const host = line("", "ln");
+  host.innerHTML = `
+    <div class="picker">
+      <div class="picker-head"><span><span class="g">❯</span> select a project</span><span><span class="sel-count">1</span>/${PROJECTS.length}</span></div>
+      <ul class="plist" role="listbox">${PROJECTS.map((p, i) => `
+        <li class="pitem" data-i="${i}" role="option">
+          <span class="arrow"></span><span class="st ${p.status}"></span>
+          <span class="name">${esc(p.name)}</span><span class="kind">${p.kind}</span>
+        </li>`).join("")}
+      </ul>
+      <div class="preview"></div>
+      <div class="keys"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>enter</kbd> open · <kbd>r</kbd> repo · <kbd>q</kbd> quit</div>
+    </div>`;
+  host.style.whiteSpace = "normal";
+  const root = host.firstElementChild;
+  picker = { root, idx: 0 };
+  root.querySelectorAll(".pitem").forEach(li => {
+    li.addEventListener("click", e => {
+      e.stopPropagation();
+      if (mode !== "select" || picker?.root !== root) return;
+      const i = +li.dataset.i;
+      if (i === picker.idx) choose("url"); else select(i);
+    });
+  });
+  select(0);
+  scroll();
+  return "async";
+}
+
+function select(i) {
+  const n = PROJECTS.length;
+  picker.idx = (i + n) % n;
+  const p = PROJECTS[picker.idx];
+  picker.root.querySelectorAll(".pitem").forEach((li, j) => {
+    const on = j === picker.idx;
+    li.classList.toggle("active", on);
+    li.setAttribute("aria-selected", on);
+    li.querySelector(".arrow").textContent = on ? "❯" : "";
+  });
+  picker.root.querySelector(".sel-count").textContent = picker.idx + 1;
+  const [lbl, col] = STATUS_LABEL[p.status];
+  const live = p.url ? `<a href="${p.url}" target="_blank" rel="noopener">${esc(p.url.replace(/^https:\/\//, ""))}</a>` : `<span class="faint">—</span>`;
+  picker.root.querySelector(".preview").innerHTML = `
+    <h3>${esc(p.name)}</h3>
+    <div class="tag"># ${esc(p.tag)}</div>
+    <p>${esc(p.desc)}</p>
+    <dl class="kv">
+      <dt>status</dt><dd><span class="${col}">● ${lbl}</span></dd>
+      <dt>live</dt><dd>${live}</dd>
+      <dt>repo</dt><dd><a href="${p.repo}" target="_blank" rel="noopener">${esc(p.repo.replace(/^https:\/\/github.com\//, "gh:"))}</a></dd>
+      <dt>stack</dt><dd><div class="chips">${p.stack.map(s => `<span class="chip">${esc(s)}</span>`).join("")}</div></dd>
+    </dl>`;
+  picker.root.querySelector(".pitem.active").scrollIntoView({ block: "nearest" });
+}
+
+function choose(which) {
+  const p = PROJECTS[picker.idx];
+  closePicker();
+  openProject(p, which);
+  newPrompt();
+}
+function closePicker() {
+  picker.root.classList.add("done");
+  picker = null;
+}
+
+// ─── keyboard ────────────────────────────────────────────────────────────
+function complete() {
+  const q = input.replace(/^\//, "");
+  const hits = Object.keys(COMMANDS).filter(k => k.startsWith(q));
+  if (hits.length === 1) input = "/" + hits[0];
+  else if (hits.length > 1) {
+    freezePrompt();
+    line(hits.map(h => `<span class="g">/${h}</span>`).join("   "));
+    promptEl = line();
+  }
+  renderPrompt();
+}
+
+document.addEventListener("keydown", e => {
+  if (e.metaKey || (e.ctrlKey && e.key !== "l" && e.key !== "c")) return;
+
+  if (mode === "boot") { fast = true; e.preventDefault(); return; }
+  if (mode === "busy") return;
+
+  if (mode === "contact") {
+    e.preventDefault();
+    const k = e.key.toLowerCase();
+    if (k === "c") {
+      navigator.clipboard?.writeText(EMAIL).then(
+        () => line(`<span class="g">✔</span> copied <span class="c">${EMAIL}</span> to clipboard`),
+        () => line(`<span class="y">clipboard blocked — select it manually</span>`));
+    } else if (k === "m") {
+      location.href = `mailto:${EMAIL}?subject=${encodeURIComponent("Hi Erick 👋")}`;
+    }
+    setTimeout(newPrompt, k === "c" ? 60 : 0);
+    mode = "busy";
+    return;
+  }
+
+  if (mode === "select") {
+    const k = e.key;
+    if (k === "ArrowDown" || k === "j" || (k === "Tab" && !e.shiftKey)) { e.preventDefault(); select(picker.idx + 1); }
+    else if (k === "ArrowUp" || k === "k" || (k === "Tab" && e.shiftKey)) { e.preventDefault(); select(picker.idx - 1); }
+    else if (k === "Home" || k === "g") { e.preventDefault(); select(0); }
+    else if (k === "End" || k === "G") { e.preventDefault(); select(PROJECTS.length - 1); }
+    else if (k === "Enter" || k === "l" || k === "ArrowRight") { e.preventDefault(); choose("url"); }
+    else if (k === "r") { e.preventDefault(); choose("repo"); }
+    else if (k === "q" || k === "Escape" || (e.ctrlKey && k === "c")) {
+      e.preventDefault(); closePicker(); line(`<span class="dim">^C</span>`); newPrompt();
+    }
+    return;
+  }
+
+  if (mode !== "prompt") return;
+  const k = e.key;
+  if (e.ctrlKey && k === "l") { e.preventDefault(); pane.innerHTML = ""; promptEl = line(); renderPrompt(); return; }
+  if (e.ctrlKey && k === "c") { e.preventDefault(); input += "^C"; freezePrompt(); newPrompt(); return; }
+  if (k === "Enter") {
+    e.preventDefault();
+    const cmd = input;
+    freezePrompt();
+    if (cmd.trim()) history.push(cmd);
+    run(cmd);
+  } else if (k === "Backspace") { e.preventDefault(); input = input.slice(0, -1); renderPrompt(); }
+  else if (k === "Tab") { e.preventDefault(); complete(); }
+  else if (k === "ArrowUp") {
+    e.preventDefault();
+    if (!history.length) return;
+    histIdx = histIdx < 0 ? history.length - 1 : Math.max(0, histIdx - 1);
+    input = history[histIdx]; renderPrompt();
+  } else if (k === "ArrowDown") {
+    e.preventDefault();
+    if (histIdx < 0) return;
+    histIdx++;
+    if (histIdx >= history.length) { histIdx = -1; input = ""; } else input = history[histIdx];
+    renderPrompt();
+  } else if (k.length === 1) { e.preventDefault(); input += k; renderPrompt(); }
+});
+
+// mobile soft keyboards don't always fire useful keydown — read from the hidden input
+kb.addEventListener("input", () => {
+  if (mode === "prompt" && kb.value) { input += kb.value; renderPrompt(); }
+  kb.value = "";
+});
+function focusKb() {
+  if (matchMedia("(pointer: fine)").matches) kb.focus({ preventScroll: true });
+}
+pane.addEventListener("click", () => {
+  if (mode === "boot") { fast = true; return; }
+  if (mode === "contact") { mode = "busy"; newPrompt(); return; }
+  if (!getSelection().toString()) kb.focus({ preventScroll: true });
+});
+
+function exec(cmd) {
+  if (mode === "boot") { fast = true; return; }
+  if (mode === "select") { closePicker(); line(`<span class="dim">^C</span>`); }
+  else if (mode === "contact") { /* fall through */ }
+  else if (mode !== "prompt") return;
+  if (!promptEl) promptEl = line();
+  input = cmd;
+  freezePrompt();
+  history.push(cmd);
+  run(cmd);
+}
+document.querySelectorAll("[data-cmd]").forEach(b => b.addEventListener("click", e => {
+  e.stopPropagation();
+  exec(b.dataset.cmd || "clear");
+}));
+
+// ─── tmux status ─────────────────────────────────────────────────────────
+function setWindow(cmd) {
+  const n = LOOKUP[(cmd.split(/\s+/)[0] || "").replace(/^\//, "").toLowerCase()];
+  const target = { "list-projects": 1, contact: 2, about: 3 }[n] ?? 0;
+  document.querySelectorAll("#wins .win").forEach((w, i) => {
+    w.classList.toggle("on", i === target);
+    w.textContent = w.textContent.replace(/\*$/, "") + (i === target ? "*" : "");
+  });
+}
+function tick() {
+  const d = new Date();
+  document.getElementById("clock").textContent =
+    d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) + " " +
+    d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+}
+tick(); setInterval(tick, 15000);
+
+// real reachability check of the shared backend (opaque response is enough)
+const apiEl = document.getElementById("api");
+fetch("https://api.erickmob.dev/health", { mode: "no-cors", cache: "no-store" })
+  .then(() => { apiEl.innerHTML = '<span style="color:#38e07b">●</span> api'; apiEl.title = "api.erickmob.dev reachable"; })
+  .catch(() => { apiEl.innerHTML = '<span style="color:#ff6b6b">●</span> api'; apiEl.title = "api.erickmob.dev unreachable"; });
+
+boot();
+</script>
+</body>
+</html>
