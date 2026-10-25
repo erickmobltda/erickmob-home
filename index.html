@@ -299,10 +299,10 @@ const PROJECTS = [
     tag: "custom split keyboard firmware",
     desc: "ZMK config for a roBa / Charybdis split keyboard with trackball over ESB, plus a nRF52840 dongle — layers, combos and build tooling.",
     stack: ["ZMK", "Zephyr", "nRF52840"], url: null, repo: GITHUB + "/zmk-config-generic" },
-  { id: "inventory", name: "Electronics Inventory", kind: "static", status: "repo",
+  { id: "inventory", name: "Electronics Inventory", kind: "static", status: "live",
     tag: "what's in the parts drawer",
     desc: "Static page listing my electronic components — which are free and which are in use by projects. Data validated and deployed on every push.",
-    stack: ["HTML", "JSON", "GitHub Actions"], url: null, repo: GITHUB + "/eletronic-inventory" },
+    stack: ["HTML", "JSON", "GitHub Actions"], url: "https://inventory.erickmob.dev", repo: GITHUB + "/eletronic-inventory" },
 ];
 
 const STATUS_LABEL = { live: ["live", "g"], repo: ["source", "b"], hw: ["hardware", "o"], wip: ["wip", "y"] };
