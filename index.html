@@ -4,19 +4,32 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>erickmob.dev</title>
-<meta name="description" content="Erick Mob — software engineer. Side projects, tools and hardware hacks.">
+<meta name="description" content="Erick Mob — software engineer. Side projects, tools and tiny hardware, browsable from a terminal.">
 <meta name="theme-color" content="#0b0e14">
+<link rel="canonical" href="https://erickmob.dev/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://erickmob.dev/">
+<meta property="og:site_name" content="erickmob.dev">
+<meta property="og:title" content="erickmob.dev — Erick Mob">
+<meta property="og:description" content="Software engineer. Side projects, tools and tiny hardware — browse them from a terminal.">
+<meta property="og:image" content="https://erickmob.dev/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%230b0e14'/><text x='10' y='44' font-family='monospace' font-size='34' fill='%2338e07b'>&gt;_</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
 <style>
+  /* default theme ("erickmob"); the `theme` command overrides these on :root */
   :root {
     --bg: #07090d;
     --term: #0b0e14;
     --term-2: #0f131b;
+    --chrome: #111621;
     --line: #1c2230;
     --fg: #c9d1d9;
+    --strong: #ffffff;
     --dim: #6b7485;
     --faint: #3a4253;
     --green: #38e07b;
@@ -27,13 +40,20 @@
     --magenta: #d4a6ff;
     --orange: #ffa759;
     --sel: #16202e;
-    --glow: 0 0 18px rgba(56, 224, 123, .25);
+    --status-bg: #0f1a14;
+    --status-line: #173123;
+    --status-fg: #7fa48c;
+    --status-on: #8bf0b2;
+    --status-host: #1d3a29;
+    --status-host-fg: #bff3d3;
+    --on-accent: #06110a;
+    --glow: 0 0 18px color-mix(in srgb, var(--green) 25%, transparent);
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
-    background: radial-gradient(1200px 700px at 20% -10%, #10202a 0%, transparent 60%),
-                radial-gradient(900px 600px at 110% 110%, #1a1426 0%, transparent 55%),
+    background: radial-gradient(1200px 700px at 20% -10%, color-mix(in srgb, var(--cyan) 8%, transparent) 0%, transparent 60%),
+                radial-gradient(900px 600px at 110% 110%, color-mix(in srgb, var(--magenta) 7%, transparent) 0%, transparent 55%),
                 var(--bg);
     color: var(--fg);
     font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -60,7 +80,7 @@
     overflow: hidden;
     position: relative;
   }
-  /* scanlines + vignette */
+  /* scanlines */
   .window::after {
     content: ""; position: absolute; inset: 0; pointer-events: none;
     background: repeating-linear-gradient(to bottom, rgba(255,255,255,.018) 0 1px, transparent 1px 3px);
@@ -71,7 +91,7 @@
     height: 38px; flex: none;
     display: flex; align-items: center; gap: 8px;
     padding: 0 14px;
-    background: linear-gradient(#141923, #10141c);
+    background: var(--chrome);
     border-bottom: 1px solid var(--line);
     user-select: none;
   }
@@ -98,8 +118,10 @@
   .g { color: var(--green); } .c { color: var(--cyan); } .b { color: var(--blue); }
   .y { color: var(--yellow); } .r { color: var(--red); } .m { color: var(--magenta); } .o { color: var(--orange); }
   .bold { font-weight: 700; }
-  a { color: var(--cyan); text-decoration: none; border-bottom: 1px dashed rgba(92,207,230,.4); }
+  a { color: var(--cyan); text-decoration: none; border-bottom: 1px dashed color-mix(in srgb, var(--cyan) 40%, transparent); }
   a:hover { color: var(--term); background: var(--cyan); border-bottom-color: transparent; }
+  a.opt { color: var(--green); border: 0; font-weight: 700; }
+  a.opt:hover { color: var(--term); background: var(--green); }
 
   .prompt-user { color: var(--green); font-weight: 700; }
   .prompt-path { color: var(--blue); font-weight: 700; }
@@ -109,6 +131,8 @@
     animation: blink 1.05s steps(1) infinite;
   }
   .cursor.solid { animation: none; }
+  /* cursor sitting on a character (editing mid-line): inverted cell */
+  .cursor.ch { width: auto; height: auto; vertical-align: baseline; color: var(--term); animation: none; }
   @keyframes blink { 50% { opacity: 0; } }
 
   .banner {
@@ -116,11 +140,11 @@
     font-weight: 700; line-height: 1.12; font-size: 13px;
     white-space: pre; overflow: hidden;
   }
-  .banner .acc { color: var(--cyan); text-shadow: 0 0 18px rgba(92,207,230,.3); }
+  .banner .acc { color: var(--cyan); }
 
   .bar { color: var(--green); }
 
-  /* project picker */
+  /* project picker (fzf-like) */
   .picker {
     display: grid; grid-template-columns: minmax(260px, 360px) 1fr;
     gap: 0; margin: 6px 0 4px;
@@ -128,12 +152,15 @@
     background: var(--term-2);
   }
   .picker.done { opacity: .55; }
+  .picker.done .cursor { display: none; }
   .picker-head {
     grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 12px;
     padding: 6px 12px; border-bottom: 1px solid var(--line);
-    background: #111621; color: var(--dim); font-size: 12px;
+    background: var(--chrome); color: var(--dim); font-size: 12px;
   }
   .picker-head .g { font-weight: 700; }
+  .picker-head .query { color: var(--fg); }
+  .picker-head .cursor { height: 1.1em; }
   .plist { list-style: none; margin: 0; padding: 6px 0; border-right: 1px solid var(--line); }
   .pitem {
     display: flex; align-items: center; gap: 10px;
@@ -142,11 +169,13 @@
   }
   .pitem .arrow { width: 1ch; color: var(--green); }
   .pitem .name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .pitem .name .hl { color: var(--green); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
   .pitem .kind { color: var(--faint); font-size: 12px; }
   .pitem:hover { background: rgba(255,255,255,.025); }
   .pitem.active { background: var(--sel); border-left-color: var(--green); }
-  .pitem.active .name { color: #fff; font-weight: 700; }
+  .pitem.active .name { color: var(--strong); font-weight: 700; }
   .pitem.active .kind { color: var(--dim); }
+  .plist .empty { padding: 3px 14px; color: var(--dim); }
   .st { width: 8px; height: 8px; border-radius: 50%; flex: none; }
   .st.live { background: var(--green); box-shadow: 0 0 8px var(--green); }
   .st.repo { background: var(--blue); }
@@ -154,7 +183,7 @@
   .st.wip  { background: var(--yellow); }
 
   .preview { padding: 12px 16px; min-width: 0; }
-  .preview h3 { margin: 0 0 2px; font-size: 16px; color: #fff; }
+  .preview h3 { margin: 0 0 2px; font-size: 16px; color: var(--strong); }
   .preview .tag { color: var(--dim); font-size: 12px; margin-bottom: 10px; }
   .preview p { margin: 0 0 12px; }
   .kv { display: grid; grid-template-columns: 8ch 1fr; gap: 2px 12px; font-size: 13px; }
@@ -162,12 +191,13 @@
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip {
     font-size: 11.5px; padding: 0 7px; border-radius: 4px;
-    background: rgba(115,167,255,.1); color: var(--blue); border: 1px solid rgba(115,167,255,.2);
+    background: color-mix(in srgb, var(--blue) 10%, transparent); color: var(--blue);
+    border: 1px solid color-mix(in srgb, var(--blue) 22%, transparent);
   }
   .keys { padding: 6px 12px; grid-column: 1 / -1; border-top: 1px solid var(--line); color: var(--dim); font-size: 12px; }
   kbd {
     font-family: inherit; font-size: 11px; padding: 0 5px; border-radius: 3px;
-    border: 1px solid var(--faint); border-bottom-width: 2px; color: var(--fg); background: #141a25;
+    border: 1px solid var(--faint); border-bottom-width: 2px; color: var(--fg); background: var(--chrome);
   }
 
   .card {
@@ -179,27 +209,30 @@
   /* tmux status */
   .status {
     flex: none; height: 26px; display: flex; align-items: stretch;
-    background: #0f1a14; border-top: 1px solid #173123;
+    background: var(--status-bg); border-top: 1px solid var(--status-line);
     font-size: 12.5px; user-select: none; white-space: nowrap; overflow: hidden;
   }
-  .status .sess { background: var(--green); color: #06110a; font-weight: 800; padding: 0 12px; display: flex; align-items: center; }
+  .status .sess { background: var(--green); color: var(--on-accent); font-weight: 800; padding: 0 12px; display: flex; align-items: center; }
   .status .wins { display: flex; align-items: center; padding: 0 6px; gap: 2px; flex: 1; overflow: hidden; }
-  .status .win { padding: 0 8px; color: #7fa48c; cursor: pointer; border-radius: 3px; }
-  .status .win:hover { color: #d7f5e1; }
-  .status .win.on { color: #06110a; background: #8bf0b2; font-weight: 700; }
-  .status .right { display: flex; align-items: center; gap: 14px; padding: 0 12px; color: #7fa48c; }
-  .status .right .host { background: #1d3a29; color: #bff3d3; padding: 0 10px; margin-right: -12px; height: 100%; display: flex; align-items: center; }
+  .status .win { padding: 0 8px; color: var(--status-fg); cursor: pointer; border-radius: 3px; }
+  .status .win:hover { color: var(--fg); }
+  .status .win.on { color: var(--on-accent); background: var(--status-on); font-weight: 700; }
+  .status .right { display: flex; align-items: center; gap: 14px; padding: 0 12px; color: var(--status-fg); }
+  .status .right .host { background: var(--status-host); color: var(--status-host-fg); padding: 0 10px; margin-right: -12px; height: 100%; display: flex; align-items: center; }
 
   /* mobile command bar */
-  .quick { display: none; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line); background: #0d1118; overflow-x: auto; flex: none; }
+  .quick { display: none; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line); background: var(--chrome); overflow-x: auto; flex: none; }
   .quick button {
     font: inherit; font-size: 12.5px; color: var(--green); background: transparent;
-    border: 1px solid #1f3b2b; border-radius: 6px; padding: 5px 10px; white-space: nowrap; cursor: pointer;
+    border: 1px solid color-mix(in srgb, var(--green) 25%, transparent); border-radius: 6px; padding: 5px 10px; white-space: nowrap; cursor: pointer;
   }
-  .quick button:active { background: #12271b; }
+  .quick button:active { background: color-mix(in srgb, var(--green) 12%, transparent); }
 
   /* hidden input that receives typing (and opens the soft keyboard on phones) */
   #kb { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; font-size: 16px; caret-color: transparent; pointer-events: none; }
+
+  /* plain-HTML version of the content: read by crawlers and screen readers, shown when JS is off */
+  .static { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
   @media (max-width: 760px) {
     body { font-size: 12.5px; }
@@ -218,13 +251,18 @@
     .cursor { animation: none; }
   }
 </style>
+<noscript><style>
+  .wrap { display: none; }
+  body { overflow: auto; }
+  .static { position: static; width: auto; height: auto; clip-path: none; white-space: normal; max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+</style></noscript>
 </head>
 <body>
-<div class="wrap">
+<div class="wrap" aria-hidden="false">
   <div class="window" id="window">
     <div class="titlebar">
       <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-      <div class="title" id="title"><b>guest@local</b> — zsh — 120×40</div>
+      <div class="title" id="title"><b>guest@local</b> — zsh</div>
     </div>
     <div class="pane" id="pane" aria-live="polite"></div>
     <div class="quick" id="quick">
@@ -252,60 +290,168 @@
 </div>
 <form id="kbf" autocomplete="off"><input id="kb" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" aria-label="terminal input"></form>
 
+<!-- Source of truth for the projects: the terminal reads this list. status: live | repo | hw | wip -->
+<main class="static" aria-label="erickmob.dev (text version)">
+  <h1>Erick Mob — erickmob.dev</h1>
+  <p>Software engineer. Side projects, tools and tiny hardware.</p>
+  <h2>Projects</h2>
+  <ul id="projects">
+    <li data-id="reeltrip" data-kind="web app" data-status="live" data-tag="travel reels → structured trip notes" data-stack="React, Vite, Firebase, Claude">
+      <h3>ReelTrip</h3>
+      <p>Paste a travel reel from Instagram, YouTube or TikTok and get a clean, structured travel note (places, tips, POIs) saved into one of your trips.</p>
+      <a data-live href="https://reeltrip.erickmob.dev">reeltrip.erickmob.dev</a> · <a data-repo href="https://github.com/erickmobltda/reeltrip">source</a>
+    </li>
+    <li data-id="labsync" data-kind="web app" data-status="live" data-tag="blood tests → biomarker trends" data-stack="React, Vite, Firebase, Claude">
+      <h3>LabSync</h3>
+      <p>Upload blood-test PDFs, extract biomarkers automatically with AI and track how each one trends over time.</p>
+      <a data-live href="https://labsync.erickmob.dev">labsync.erickmob.dev</a> · <a data-repo href="https://github.com/erickmobltda/labsync">source</a>
+    </li>
+    <li data-id="ledgenator" data-kind="web app" data-status="live" data-tag="multi-broker investment ledger" data-stack="React, TypeScript, Firebase, Recharts">
+      <h3>Ledgenator</h3>
+      <p>Investment tracker across brokers — stocks, ETFs, FIIs, crypto — with BRL/USD bookkeeping and an animated dashboard.</p>
+      <a data-live href="https://ledgenator.erickmob.dev">ledgenator.erickmob.dev</a> · <a data-repo href="https://github.com/erickmobltda/ledgenator">source</a>
+    </li>
+    <li data-id="compartilhator" data-kind="web app" data-status="live" data-tag="one link → posts for every network" data-stack="React, Vite, Firebase, LLM">
+      <h3>Compartilhator</h3>
+      <p>Turns a video link (Reels, YouTube, TikTok) or plain text into ready-to-publish posts for Instagram, LinkedIn, Facebook and Newsletter — one-click copy each.</p>
+      <a data-live href="https://compartilhator.erickmob.dev">compartilhator.erickmob.dev</a> · <a data-repo href="https://github.com/erickmobltda/compartilhator">source</a>
+    </li>
+    <li data-id="smokership" data-kind="web app" data-status="live" data-tag="discover, rate &amp; log cigars" data-stack="React, TypeScript, Firebase">
+      <h3>Smokership</h3>
+      <p>Discover, rate and keep track of your cigars. A revival of the 2021 Smokership app, rebuilt on the shared erickmob stack.</p>
+      <a data-live href="https://smokership.erickmob.dev">smokership.erickmob.dev</a> · <a data-repo href="https://github.com/erickmobltda/smokership">source</a>
+    </li>
+    <li data-id="erickmob-api" data-kind="backend" data-status="live" data-tag="the one backend behind everything" data-stack="Python, FastAPI, Oracle Cloud, Cloudflare">
+      <h3>erickmob-api</h3>
+      <p>Single FastAPI backend for all apps: verifies Firebase logins, holds every API key, serves AI, market data and files. Runs on an ARM VM behind a Cloudflare Tunnel.</p>
+      <a data-live href="https://api.erickmob.dev/health">api.erickmob.dev/health</a> · <a data-repo href="https://github.com/erickmobltda/erickmob-api">source</a>
+    </li>
+    <li data-id="capita-maeva" data-kind="game" data-status="live" data-tag="pixel-art runner you play with your body" data-stack="HTML5 Canvas, ESP32, BLE HID">
+      <h3>Capitã Maeva</h3>
+      <p>Browser pixel-art game for kids aged 4–6. Plays on TV, desktop or phone — or with your body: an ESP32 + motion sensor becomes a Bluetooth keyboard. Jump IRL, the hero jumps.</p>
+      <a data-live href="https://erickmobltda.github.io/capita_maeva_game/">play</a> · <a data-repo href="https://github.com/erickmobltda/capita_maeva_game">source</a>
+    </li>
+    <li data-id="agent-hub" data-kind="cli" data-status="repo" data-tag="claude code agents on tmux + worktrees" data-stack="bash, tmux, fzf, git, Claude Code">
+      <h3>agent-hub</h3>
+      <p>A hub for Claude Code agents on tmux. Each agent gets its own window, git worktree and branch; an fzf dashboard shows every agent's state. Pure bash — tmux is the source of truth.</p>
+      <a data-repo href="https://github.com/erickmobltda/agent-hub">source</a>
+    </li>
+    <li data-id="painel" data-kind="firmware" data-status="hw" data-tag="touchscreen kids' console" data-stack="C++, Arduino, ESP32, LVGL">
+      <h3>Painel ESP32</h3>
+      <p>Firmware for a Waveshare ESP32 3.5" touch board: music covers that play on Spotify/Alexa, a runner game, painting, reading and word-building apps for a small kid.</p>
+      <a data-repo href="https://github.com/erickmobltda/painel-esp32">source</a>
+    </li>
+    <li data-id="zmk" data-kind="firmware" data-status="hw" data-tag="custom split keyboard firmware" data-stack="ZMK, Zephyr, nRF52840">
+      <h3>zmk-config</h3>
+      <p>ZMK config for a roBa / Charybdis split keyboard with trackball over ESB, plus a nRF52840 dongle — layers, combos and build tooling.</p>
+      <a data-repo href="https://github.com/erickmobltda/zmk-config-generic">source</a>
+    </li>
+    <li data-id="inventory" data-kind="static" data-status="live" data-tag="what's in the parts drawer" data-stack="HTML, JSON, GitHub Actions">
+      <h3>Electronics Inventory</h3>
+      <p>Static page listing my electronic components — which are free and which are in use by projects. Data validated and deployed on every push.</p>
+      <a data-live href="https://inventory.erickmob.dev">inventory.erickmob.dev</a> · <a data-repo href="https://github.com/erickmobltda/eletronic-inventory">source</a>
+    </li>
+  </ul>
+  <h2>Contact</h2>
+  <p><a href="mailto:erickmobltda@gmail.com">erickmobltda@gmail.com</a> · <a href="https://github.com/erickmobltda">github.com/erickmobltda</a></p>
+</main>
+
 <script>
 // ─── data ────────────────────────────────────────────────────────────────
 const EMAIL = "erickmobltda@gmail.com";
 const GITHUB = "https://github.com/erickmobltda";
 
-// status: live | repo | hw | wip
-const PROJECTS = [
-  { id: "reeltrip", name: "ReelTrip", kind: "web app", status: "live",
-    tag: "travel reels → structured trip notes",
-    desc: "Paste a travel reel from Instagram, YouTube or TikTok and get a clean, structured travel note (places, tips, POIs) saved into one of your trips.",
-    stack: ["React", "Vite", "Firebase", "Claude"], url: "https://reeltrip.erickmob.dev", repo: GITHUB + "/reeltrip" },
-  { id: "labsync", name: "LabSync", kind: "web app", status: "live",
-    tag: "blood tests → biomarker trends",
-    desc: "Upload blood-test PDFs, extract biomarkers automatically with AI and track how each one trends over time.",
-    stack: ["React", "Vite", "Firebase", "Claude"], url: "https://labsync.erickmob.dev", repo: GITHUB + "/labsync" },
-  { id: "ledgenator", name: "Ledgenator", kind: "web app", status: "live",
-    tag: "multi-broker investment ledger",
-    desc: "Investment tracker across brokers — stocks, ETFs, FIIs, crypto — with BRL/USD bookkeeping and an animated dashboard.",
-    stack: ["React", "TypeScript", "Firebase", "Recharts"], url: "https://ledgenator.erickmob.dev", repo: GITHUB + "/ledgenator" },
-  { id: "compartilhator", name: "Compartilhator", kind: "web app", status: "live",
-    tag: "one link → posts for every network",
-    desc: "Turns a video link (Reels, YouTube, TikTok) or plain text into ready-to-publish posts for Instagram, LinkedIn, Facebook and Newsletter — one-click copy each.",
-    stack: ["React", "Vite", "Firebase", "LLM"], url: "https://compartilhator.erickmob.dev", repo: GITHUB + "/compartilhator" },
-  { id: "smokership", name: "Smokership", kind: "web app", status: "live",
-    tag: "discover, rate & log cigars",
-    desc: "Discover, rate and keep track of your cigars. A revival of the 2021 Smokership app, rebuilt on the shared erickmob stack.",
-    stack: ["React", "TypeScript", "Firebase"], url: "https://smokership.erickmob.dev", repo: GITHUB + "/smokership" },
-  { id: "erickmob-api", name: "erickmob-api", kind: "backend", status: "live",
-    tag: "the one backend behind everything",
-    desc: "Single FastAPI backend for all apps: verifies Firebase logins, holds every API key, serves AI, market data and files. Runs on an ARM VM behind a Cloudflare Tunnel.",
-    stack: ["Python", "FastAPI", "Oracle Cloud", "Cloudflare"], url: "https://api.erickmob.dev/health", repo: GITHUB + "/erickmob-api" },
-  { id: "capita-maeva", name: "Capitã Maeva", kind: "game", status: "live",
-    tag: "pixel-art runner you play with your body",
-    desc: "Browser pixel-art game for kids aged 4–6. Plays on TV, desktop or phone — or with your body: an ESP32 + motion sensor becomes a Bluetooth keyboard. Jump IRL, the hero jumps.",
-    stack: ["HTML5 Canvas", "ESP32", "BLE HID"], url: "https://erickmobltda.github.io/capita_maeva_game/", repo: GITHUB + "/capita_maeva_game" },
-  { id: "agent-hub", name: "agent-hub", kind: "cli", status: "repo",
-    tag: "claude code agents on tmux + worktrees",
-    desc: "A hub for Claude Code agents on tmux. Each agent gets its own window, git worktree and branch; an fzf dashboard shows every agent's state. Pure bash — tmux is the source of truth.",
-    stack: ["bash", "tmux", "fzf", "git", "Claude Code"], url: null, repo: GITHUB + "/agent-hub" },
-  { id: "painel", name: "Painel ESP32", kind: "firmware", status: "hw",
-    tag: "touchscreen kids' console",
-    desc: "Firmware for a Waveshare ESP32 3.5\" touch board: music covers that play on Spotify/Alexa, a runner game, painting, reading and word-building apps for a small kid.",
-    stack: ["C++", "Arduino", "ESP32", "LVGL"], url: null, repo: GITHUB + "/painel-esp32" },
-  { id: "zmk", name: "zmk-config", kind: "firmware", status: "hw",
-    tag: "custom split keyboard firmware",
-    desc: "ZMK config for a roBa / Charybdis split keyboard with trackball over ESB, plus a nRF52840 dongle — layers, combos and build tooling.",
-    stack: ["ZMK", "Zephyr", "nRF52840"], url: null, repo: GITHUB + "/zmk-config-generic" },
-  { id: "inventory", name: "Electronics Inventory", kind: "static", status: "live",
-    tag: "what's in the parts drawer",
-    desc: "Static page listing my electronic components — which are free and which are in use by projects. Data validated and deployed on every push.",
-    stack: ["HTML", "JSON", "GitHub Actions"], url: "https://inventory.erickmob.dev", repo: GITHUB + "/eletronic-inventory" },
-];
+const PROJECTS = [...document.querySelectorAll("#projects > li")].map(li => ({
+  id: li.dataset.id,
+  name: li.querySelector("h3").textContent,
+  kind: li.dataset.kind,
+  status: li.dataset.status,
+  tag: li.dataset.tag,
+  desc: li.querySelector("p").textContent,
+  stack: li.dataset.stack.split(/\s*,\s*/),
+  url: li.querySelector("a[data-live]")?.getAttribute("href") || null,
+  repo: li.querySelector("a[data-repo]").getAttribute("href"),
+}));
 
 const STATUS_LABEL = { live: ["live", "g"], repo: ["source", "b"], hw: ["hardware", "o"], wip: ["wip", "y"] };
+
+// per-visitor conveniences only (visited flag, theme, GitHub cache)
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem("erickmob:" + k)); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem("erickmob:" + k, JSON.stringify(v)); } catch {} },
+};
+
+// ─── themes ──────────────────────────────────────────────────────────────
+const THEMES = {
+  erickmob: {},
+  dracula: {
+    bg: "#191a21", term: "#282a36", "term-2": "#2d2f3d", chrome: "#21222c", line: "#3b3d4f", fg: "#f8f8f2", strong: "#ffffff",
+    dim: "#7b82a8", faint: "#4d5066", green: "#50fa7b", cyan: "#8be9fd", blue: "#bd93f9", yellow: "#f1fa8c", red: "#ff5555",
+    magenta: "#ff79c6", orange: "#ffb86c", sel: "#44475a", "status-bg": "#21222c", "status-line": "#343746", "status-fg": "#a4a8c6",
+    "status-on": "#bd93f9", "status-host": "#44475a", "status-host-fg": "#f8f8f2", "on-accent": "#191a21",
+  },
+  gruvbox: {
+    bg: "#1d2021", term: "#282828", "term-2": "#32302f", chrome: "#1d2021", line: "#3c3836", fg: "#ebdbb2", strong: "#fbf1c7",
+    dim: "#928374", faint: "#504945", green: "#b8bb26", cyan: "#8ec07c", blue: "#83a598", yellow: "#fabd2f", red: "#fb4934",
+    magenta: "#d3869b", orange: "#fe8019", sel: "#3c3836", "status-bg": "#32302f", "status-line": "#3c3836", "status-fg": "#a89984",
+    "status-on": "#fabd2f", "status-host": "#504945", "status-host-fg": "#ebdbb2", "on-accent": "#1d2021",
+  },
+  solarized: {
+    bg: "#001e26", term: "#002b36", "term-2": "#073642", chrome: "#00222b", line: "#0e4452", fg: "#93a1a1", strong: "#fdf6e3",
+    dim: "#657b83", faint: "#2a5561", green: "#859900", cyan: "#2aa198", blue: "#268bd2", yellow: "#b58900", red: "#dc322f",
+    magenta: "#d33682", orange: "#cb4b16", sel: "#073642", "status-bg": "#073642", "status-line": "#0e4452", "status-fg": "#839496",
+    "status-on": "#2aa198", "status-host": "#0e4452", "status-host-fg": "#eee8d5", "on-accent": "#002b36",
+  },
+  nord: {
+    bg: "#242933", term: "#2e3440", "term-2": "#343b49", chrome: "#2b303b", line: "#3b4252", fg: "#d8dee9", strong: "#eceff4",
+    dim: "#7b88a1", faint: "#4c566a", green: "#a3be8c", cyan: "#88c0d0", blue: "#81a1c1", yellow: "#ebcb8b", red: "#bf616a",
+    magenta: "#b48ead", orange: "#d08770", sel: "#3b4252", "status-bg": "#3b4252", "status-line": "#434c5e", "status-fg": "#a5b1c2",
+    "status-on": "#88c0d0", "status-host": "#4c566a", "status-host-fg": "#eceff4", "on-accent": "#2e3440",
+  },
+};
+
+function applyTheme(name) {
+  const t = THEMES[name] || {};
+  const root = document.documentElement;
+  for (const v of Object.keys(THEMES.dracula)) {
+    if (t[v]) root.style.setProperty("--" + v, t[v]); else root.style.removeProperty("--" + v);
+  }
+  document.querySelector('meta[name="theme-color"]').content = getComputedStyle(root).getPropertyValue("--term").trim();
+}
+applyTheme(store.get("theme"));
+
+// ─── GitHub activity (public API, cached for an hour) ────────────────────
+let GH = {};
+
+async function loadGitHub() {
+  const cached = store.get("gh");
+  if (cached && Date.now() - cached.at < 36e5) GH = cached.repos;
+  else {
+    try {
+      const res = await fetch("https://api.github.com/users/erickmobltda/repos?per_page=100&sort=pushed");
+      if (!res.ok) return;
+      const repos = {};
+      for (const r of await res.json()) repos[r.name] = { pushed: r.pushed_at, lang: r.language, stars: r.stargazers_count };
+      GH = repos;
+      store.set("gh", { at: Date.now(), repos });
+    } catch { return; }
+  }
+  if (picker) select(picker.pos);
+}
+
+function ago(iso) {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  for (const [n, u] of [[31536e3, "y"], [2592e3, "mo"], [604800, "w"], [86400, "d"], [3600, "h"], [60, "m"]]) {
+    if (s >= n) return `${Math.floor(s / n)}${u} ago`;
+  }
+  return "just now";
+}
+
+function gitMeta(p) {
+  const m = GH[p.repo.split("/").pop()];
+  if (!m) return "";
+  return [`updated ${ago(m.pushed)}`, m.lang, m.stars ? `★ ${m.stars}` : ""].filter(Boolean).join(" · ");
+}
 
 // ─── terminal core ───────────────────────────────────────────────────────
 const pane = document.getElementById("pane");
@@ -314,7 +460,7 @@ const titleEl = document.getElementById("title");
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const touch = matchMedia("(pointer: coarse)").matches;
 
-let mode = "boot";           // boot | prompt | busy | select | contact
+let mode = "boot";           // boot | prompt | busy | select | contact | correct | search
 let fast = reduced;          // skip animations
 let input = "";
 let history = [];
@@ -324,6 +470,8 @@ let picker = null;
 let cwd = "~";
 let queue = null;            // while a command runs, its output is collected here and printed line by line
 let typeahead = "";          // keys typed while a command was still printing, replayed at the next prompt
+let pendingFix = null;       // { original, fixed, el } while zsh asks "correct X to Y?"
+let search = null;           // { query, idx } during ctrl+r
 
 const sleep = ms => new Promise(r => setTimeout(r, fast ? 0 : ms));
 const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
@@ -353,6 +501,22 @@ async function flush() {
   }
 }
 
+// ─── title bar: real columns × rows of the pane ─────────────────────────
+let title = ["guest@local", "zsh"];
+const measure = document.createElement("canvas").getContext("2d");
+
+function setTitle(who = title[0], prog = title[1]) {
+  title = [who, prog];
+  const cs = getComputedStyle(pane);
+  measure.font = `${cs.fontSize} ${cs.fontFamily}`;
+  const cw = measure.measureText("M").width || 8;
+  const cols = Math.floor((pane.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) / cw);
+  const rows = Math.floor((pane.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)) / parseFloat(cs.lineHeight));
+  titleEl.innerHTML = `<b>${who}</b> — ${prog} — ${cols}×${rows}`;
+}
+addEventListener("resize", () => setTitle());
+document.fonts?.ready.then(() => setTitle());
+
 const PS1_LOCAL = `<span class="prompt-user">guest@local</span><span class="dim">:</span><span class="prompt-path">~</span><span class="dim">$</span> `;
 const ps1 = () => `<span class="prompt-user">guest@erickmob</span><span class="dim">:</span><span class="prompt-path">${cwd}</span><span class="dim">$</span> `;
 
@@ -362,7 +526,7 @@ async function typeInto(el, prefix, text, speed = 55) {
     scroll();
     await sleep(speed + Math.random() * speed * 0.8);
   }
-  await sleep(260);
+  await sleep(160);
   el.innerHTML = prefix + esc(text);
 }
 
@@ -381,7 +545,7 @@ async function spinner(label, ms, okText = "ok") {
 
 async function progress(label, ms) {
   const el = line();
-  const W = 28, steps = 24;
+  const W = 28, steps = 20;
   for (let s = 0; s <= steps; s++) {
     const n = Math.round((s / steps) * W);
     el.innerHTML = `${label} <span class="bar">${"█".repeat(n)}</span><span class="faint">${"░".repeat(W - n)}</span> <span class="dim">${String(Math.round(s / steps * 100)).padStart(3)}%</span>`;
@@ -404,36 +568,42 @@ function fingerprint() {
 }
 
 async function boot() {
+  const returning = store.get("visited");
+  store.set("visited", true);
   mode = "boot";
   typeahead = "";
   cwd = "~";
   pane.innerHTML = "";
-  titleEl.innerHTML = "<b>guest@local</b> — zsh — 120×40";
+  setTitle("guest@local", "zsh");
   line(`<span class="dim">Last login: ${new Date(Date.now() - 864e5 * 3).toString().slice(0, 24)} on ttys001</span>`);
-  const skip = line(`<span class="faint">(${touch ? "tap" : "press any key"} to skip)</span>`);
-  await sleep(500);
-
   const cmd = line();
-  await typeInto(cmd, PS1_LOCAL, "ssh guest@erickmob.dev", 45);
-  skip.remove();
 
-  line(`<span class="dim">debug1: Connecting to erickmob.dev [443] port 22.</span>`);
-  await sleep(380);
-  line(`<span class="dim">debug1: Connection established.</span>`);
-  await sleep(220);
-  line(`<span class="dim">debug1: Remote protocol version 2.0, remote software version OpenSSH_9.9</span>`);
-  await sleep(200);
-  line(`<span class="dim">debug1: kex: algorithm: </span>sntrup761x25519-sha512<span class="dim"> · cipher: </span>chacha20-poly1305`);
-  await sleep(260);
-  line(`<span class="dim">debug1: Server host key: ssh-ed25519 SHA256:</span><span class="y">${fingerprint()}</span>`);
-  await sleep(300);
-  await spinner("Authenticating with public key <span class='m'>\"guest@visitor\"</span>", 900, "accepted");
-  await spinner("Establishing encrypted channel", 650, "secure");
-  await spinner("Allocating pty · attaching tmux session <span class='g'>erickmob</span>", 600, "attached");
-  await progress("Syncing projects", 800);
-  await sleep(250);
+  if (returning) {
+    await typeInto(cmd, PS1_LOCAL, "ssh guest@erickmob.dev", 16);
+    await spinner("Reconnecting · tmux session <span class='g'>erickmob</span>", 450, "attached");
+  } else {
+    const skip = line(`<span class="faint">(${touch ? "tap" : "press any key"} to skip)</span>`);
+    await sleep(300);
+    await typeInto(cmd, PS1_LOCAL, "ssh guest@erickmob.dev", 30);
+    skip.remove();
+    line(`<span class="dim">debug1: Connecting to erickmob.dev [443] port 22.</span>`);
+    await sleep(180);
+    line(`<span class="dim">debug1: Connection established.</span>`);
+    await sleep(120);
+    line(`<span class="dim">debug1: Remote protocol version 2.0, remote software version OpenSSH_9.9</span>`);
+    await sleep(110);
+    line(`<span class="dim">debug1: kex: algorithm: </span>sntrup761x25519-sha512<span class="dim"> · cipher: </span>chacha20-poly1305`);
+    await sleep(140);
+    line(`<span class="dim">debug1: Server host key: ssh-ed25519 SHA256:</span><span class="y">${fingerprint()}</span>`);
+    await sleep(160);
+    await spinner("Authenticating with public key <span class='m'>\"guest@visitor\"</span>", 550, "accepted");
+    await spinner("Establishing encrypted channel", 400, "secure");
+    await spinner("Allocating pty · attaching tmux session <span class='g'>erickmob</span>", 350, "attached");
+    await progress("Syncing projects", 450);
+  }
+  await sleep(150);
 
-  titleEl.innerHTML = "<b>guest@erickmob</b> — tmux — 120×40";
+  setTitle("guest@erickmob", "tmux");
   pane.innerHTML = "";
   line(BANNER, "banner");
   line("");
@@ -443,10 +613,10 @@ async function boot() {
   line(`  Type <span class="g">/help</span> for commands. Try <span class="g">/list-projects</span> or <span class="g">/contact</span>.`);
   if (touch) line(`  <span class="dim">Tap the screen to type, or use the buttons below.</span>`);
   line("");
-  await sleep(500);
+  await sleep(returning ? 150 : 350);
 
   newPrompt();
-  await typeCommand("/list-projects");
+  await typeCommand(route(location.hash));
   fast = reduced;
 }
 
@@ -455,11 +625,25 @@ function uptime() {
   return `${d} days`;
 }
 
+// ─── deep links: #projects, #projects/<id>, #contact, #about, #help ──────
+function route(hash) {
+  const [page, id] = decodeURIComponent(hash.replace(/^#\/?/, "")).split("/");
+  if (page === "contact" || page === "about" || page === "help") return "/" + page;
+  return id ? `/list-projects ${id}` : "/list-projects";
+}
+function setHash(h) {
+  if (location.hash !== h) window.history.replaceState(null, "", h || location.pathname + location.search);
+}
+addEventListener("hashchange", () => typeCommand(route(location.hash)));
+
 // ─── prompt ──────────────────────────────────────────────────────────────
-function setInput(v) {
+function setInput(v, pos = v.length) {
   input = v;
   kb.value = v;
+  try { kb.setSelectionRange(pos, pos); } catch {}
 }
+const caret = () => Math.min(kb.selectionStart ?? input.length, input.length);
+
 function newPrompt() {
   mode = "prompt";
   setInput("");
@@ -475,8 +659,21 @@ function newPrompt() {
   renderPrompt();
   if (nl >= 0) submit(typed);
 }
+
 function renderPrompt() {
-  if (promptEl) promptEl.innerHTML = ps1() + esc(input) + '<span class="cursor"></span>';
+  if (!promptEl) return;
+  if (mode === "search") {
+    const match = search.idx >= 0 ? history[search.idx] : "";
+    const failed = search.query && search.idx < 0 ? "failing " : "";
+    promptEl.innerHTML = `<span class="dim">(${failed}reverse-i-search)\`</span>${esc(search.query)}<span class="dim">':</span> ${esc(match)}<span class="cursor"></span>`;
+  } else {
+    const pos = mode === "prompt" ? caret() : input.length;
+    const at = input[pos];
+    let html = ps1() + esc(input.slice(0, pos)) +
+      (at ? `<span class="cursor ch">${esc(at)}</span>${esc(input.slice(pos + 1))}` : '<span class="cursor"></span>');
+    if (touch && mode === "prompt" && !input && document.activeElement !== kb) html += ' <span class="faint">tap to type</span>';
+    promptEl.innerHTML = html;
+  }
   scroll();
 }
 function freezePrompt() {
@@ -485,25 +682,37 @@ function freezePrompt() {
 }
 
 async function submit(raw) {
-  const text = raw.trim();
+  let text = raw.trim();
   freezePrompt();
+  if (text.includes("!!")) {
+    const last = history[history.length - 1];
+    if (!last) { line("zsh: no such event: !!"); return newPrompt(); }
+    text = text.replace(/!!/g, last);
+    line(esc(text));
+  }
   if (text) history.push(text);
+  run(text);
+}
+
+async function run(text) {
   setWindow(text);
   mode = "busy";
   queue = [];
   const next = execute(text);
   await flush();
   if (next === "exit") return reconnect();
-  if (next === "select" || next === "contact") { mode = next; return; }
+  if (next === "select") kb.value = "";
+  if (next === "select" || next === "contact" || next === "correct") { mode = next; return; }
   newPrompt();
 }
 
-// simulates the visitor typing a command (buttons, tmux tabs, boot)
+// simulates the visitor typing a command (buttons, tmux tabs, boot, deep links)
 async function typeCommand(cmd) {
   if (mode === "boot") { fast = true; return; }
   if (mode === "busy") return;
-  if (mode === "select") { closePicker(); line(`<span class="dim">^C</span>`); newPrompt(); }
-  else if (mode === "contact") newPrompt();
+  if (mode === "search") endSearch(false);
+  if (mode === "select") { closePicker(); newPrompt(); }
+  else if (mode !== "prompt") newPrompt();
   mode = "busy";
   setInput("");
   for (const ch of cmd) {
@@ -517,7 +726,7 @@ async function typeCommand(cmd) {
 
 // ─── commands ────────────────────────────────────────────────────────────
 const MAIN = {
-  "list-projects": { desc: "browse projects (↑/↓, enter)", fn: cmdProjects, alias: ["projects"] },
+  "list-projects": { desc: "browse projects — type to filter, enter opens", fn: cmdProjects, alias: ["projects"] },
   "contact":       { desc: "how to reach me", fn: () => contactCard(true), alias: ["email", "mail"] },
   "about":         { desc: "who is this guy", fn: cmdAbout, alias: ["neofetch"] },
   "github":        { desc: "open my github profile", fn: cmdGithub },
@@ -531,6 +740,7 @@ const SHELL = {
   cd:       cmdCd,
   cat:      cmdCat,
   open:     cmdOpen,
+  theme:    cmdTheme,
   echo:     args => line(esc(expand(args.join(" ")))),
   date:     () => line(new Date().toString()),
   whoami:   () => line("guest"),
@@ -559,15 +769,60 @@ function lookup(name) {
   return null;
 }
 
+const notFound = head => line(`<span class="r">zsh: command not found:</span> ${esc(head)} <span class="dim">— type</span> <span class="g">/help</span>`);
+
 function execute(text) {
   if (!text) return;
   const [head, ...args] = text.split(/\s+/);
   const cmd = lookup(head);
-  if (!cmd) {
-    line(`<span class="r">zsh: command not found:</span> ${esc(head)} <span class="dim">— type</span> <span class="g">/help</span>`);
-    return;
+  if (cmd) return cmd.fn(args);
+  const fix = suggest(head);
+  if (!fix) return notFound(head), undefined;
+  const opts = ["n", "y", "a", "e"].map(k => `<a href="#" class="opt" data-act="${k}">${k}</a>`).join("");
+  const el = line(`zsh: correct '<span class="r">${esc(head)}</span>' to '<span class="g">${esc(fix)}</span>' [${opts}]? `);
+  pendingFix = { original: text, fixed: [fix, ...args].join(" "), el };
+  return "correct";
+}
+
+// zsh-style spelling correction: closest known command within a small edit distance
+function suggest(word) {
+  const w = word.replace(/^\//, "").toLowerCase();
+  if (w.length < 3) return null;
+  const names = [...Object.entries(MAIN).flatMap(([k, v]) => [k, ...(v.alias || [])]), ...Object.keys(SHELL)];
+  let best = null, bestD = w.length > 5 ? 3 : 2;
+  for (const n of names) {
+    const d = n.startsWith(w) && w.length >= 4 ? 1 : distance(w, n);
+    if (d < bestD) { best = n; bestD = d; }
   }
-  return cmd.fn(args);
+  if (!best) return null;
+  const main = lookup(best);
+  return MAIN[main.key] && (word.startsWith("/") || main.key === best) ? "/" + main.key : best;
+}
+
+function distance(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  }
+  return d[a.length][b.length];
+}
+
+function correctKey(k) {
+  if (mode !== "correct" || !"nyae".includes(k)) return;
+  const { original, fixed, el } = pendingFix;
+  pendingFix = null;
+  el.innerHTML += esc(k);
+  if (k === "y") {
+    history[history.length - 1] = fixed;
+    return run(fixed);
+  }
+  if (k === "n") notFound(original.split(/\s+/)[0]);
+  newPrompt();
+  if (k === "e") { setInput(original); renderPrompt(); }
 }
 
 function expand(s) {
@@ -580,9 +835,9 @@ function cmdHelp() {
   for (const [k, v] of Object.entries(MAIN)) line(`  <span class="g">/${k.padEnd(15)}</span>${v.desc}`);
   line("");
   line(`<span class="bold">shell</span> <span class="dim">— the usual suspects work too</span>`);
-  line(`  <span class="c">ls  cd  pwd  cat  open  echo  date  whoami  uname  uptime  ping  history  clear  exit</span>`);
+  line(`  <span class="c">ls  cd  pwd  cat  open  echo  date  whoami  uname  uptime  ping  history  theme  clear  exit</span>`);
   line("");
-  line(`  <span class="dim">tab completes · ↑/↓ history · ctrl+l clears · ctrl+c cancels</span>`);
+  line(`  <span class="dim">tab completes · ↑/↓ history · ←/→ edit · ctrl+r search · !! repeats · ctrl+l clears · ctrl+c cancels</span>`);
 }
 
 function cmdAbout() {
@@ -606,12 +861,25 @@ function cmdGithub() {
   line(`<span class="dim">opening</span> ${link(GITHUB)}`);
 }
 
+function cmdTheme([name]) {
+  const current = store.get("theme") || "erickmob";
+  if (!name) {
+    Object.keys(THEMES).forEach(t => line(`${t === current ? '<span class="g">❯</span>' : " "} ${t}`));
+    line(`<span class="dim">usage: theme &lt;name&gt;</span>`);
+    return;
+  }
+  if (!THEMES[name]) return line(`theme: unknown theme '${esc(name)}' <span class="dim">— try:</span> ${Object.keys(THEMES).join("  ")}`);
+  applyTheme(name);
+  store.set("theme", name);
+  line(`<span class="g">✔</span> theme set to <span class="bold">${name}</span>`);
+}
+
 function contactCard(interactive) {
   const rows = [
     `<span class="c bold">email </span>  <a href="mailto:${EMAIL}">${EMAIL}</a>`,
     `<span class="c bold">github</span>  <a href="${GITHUB}" target="_blank" rel="noopener">github.com/erickmobltda</a>`,
   ];
-  if (interactive) rows.push(`<a href="#" data-act="c">[c] copy email</a>  <a href="#" data-act="m">[m] compose</a>  <span class="dim">[any] continue</span>`);
+  if (interactive) rows.push(`<a href="#" data-act="c">[c] copy email</a>  <a href="#" data-act="m">[m] compose</a>  <span class="dim">[enter] continue</span>`);
   const el = line(`<div class="card">${rows.join("\n")}</div>`);
   el.style.whiteSpace = "pre";
   return interactive ? "contact" : undefined;
@@ -741,15 +1009,17 @@ function cmdOpen([target]) {
 
 function projectInfo(p) {
   const [lbl, col] = STATUS_LABEL[p.status];
+  const meta = gitMeta(p);
   line(`<span class="bold">${esc(p.name)}</span> <span class="dim"># ${esc(p.tag)}</span>`);
   line(esc(p.desc));
   line(`<span class="dim">status</span>  <span class="${col}">● ${lbl}</span>`);
   if (p.url) line(`<span class="dim">live  </span>  ${link(p.url)}`);
   line(`<span class="dim">repo  </span>  ${link(p.repo)}`);
+  if (meta) line(`<span class="dim">git   </span>  ${esc(meta)}`);
   line(`<span class="dim">stack </span>  ${p.stack.map(esc).join(" · ")}`);
 }
 
-// ─── project picker ──────────────────────────────────────────────────────
+// ─── project picker (fzf-like) ───────────────────────────────────────────
 function findProject(q) {
   q = (q || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   if (!q) return null;
@@ -762,49 +1032,82 @@ function openProject(p, which = "url") {
   window.open(href, "_blank", "noopener");
 }
 
-function cmdProjects() {
+// subsequence match on the name; returns highlighted positions and a score (lower is better)
+function fuzzy(q, s) {
+  if (!q) return { hl: [], score: 0 };
+  const hl = [];
+  const low = s.toLowerCase();
+  let at = 0;
+  for (const ch of q.toLowerCase()) {
+    at = low.indexOf(ch, at);
+    if (at < 0) return null;
+    hl.push(at++);
+  }
+  return { hl, score: hl[hl.length - 1] - hl[0] + hl[0] * 0.1 };
+}
+
+function cmdProjects([pre]) {
   const host = line();
   host.style.whiteSpace = "normal";
   host.innerHTML = `
     <div class="picker">
-      <div class="picker-head"><span><span class="g">❯</span> select a project</span><span><span class="sel-count">1</span>/${PROJECTS.length}</span></div>
-      <ul class="plist" role="listbox">${PROJECTS.map((p, i) => `
-        <li class="pitem" data-i="${i}" role="option">
-          <span class="arrow"></span><span class="st ${p.status}"></span>
-          <span class="name">${esc(p.name)}</span><span class="kind">${p.kind}</span>
-        </li>`).join("")}
-      </ul>
+      <div class="picker-head"><span><span class="g">❯</span> <span class="query"></span><span class="cursor"></span></span><span class="count"></span></div>
+      <ul class="plist" role="listbox"></ul>
       <div class="preview"></div>
-      <div class="keys"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>enter</kbd> open · <kbd>r</kbd> repo · <kbd>q</kbd> quit</div>
+      <div class="keys"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>enter</kbd> open · <kbd>shift</kbd>+<kbd>enter</kbd> repo · type to filter · <kbd>esc</kbd> quit</div>
     </div>`;
   const root = host.firstElementChild;
-  picker = { root, idx: 0 };
-  root.querySelectorAll(".pitem").forEach(li => {
-    li.addEventListener("click", e => {
-      e.stopPropagation();
-      if (mode !== "select" || picker?.root !== root) return;
-      const i = +li.dataset.i;
-      if (i === picker.idx) choose("url"); else select(i);
-    });
+  picker = { root, query: "", shown: [], pos: 0 };
+  root.querySelector(".plist").addEventListener("click", e => {
+    const li = e.target.closest(".pitem");
+    e.stopPropagation();
+    if (!li || mode !== "select" || picker?.root !== root) return;
+    const pos = +li.dataset.pos;
+    if (pos === picker.pos) choose("url"); else select(pos);
   });
-  select(0);
+  filter("");
+  const start = picker.shown.findIndex(s => PROJECTS[s.i].id === pre);
+  select(Math.max(0, start));
   return "select";
 }
 
-function select(i) {
-  const n = PROJECTS.length;
-  picker.idx = (i + n) % n;
-  const p = PROJECTS[picker.idx];
+function filter(q) {
+  picker.query = q;
+  const shown = [];
+  PROJECTS.forEach((p, i) => {
+    const m = fuzzy(q, p.name);
+    if (m) shown.push({ i, ...m });
+    else if ([p.id, p.tag, p.kind, ...p.stack].join(" ").toLowerCase().includes(q.toLowerCase())) shown.push({ i, hl: [], score: 1e3 });
+  });
+  if (q) shown.sort((a, b) => a.score - b.score);
+  picker.shown = shown;
+  picker.root.querySelector(".query").textContent = q;
+  picker.root.querySelector(".count").textContent = `${shown.length}/${PROJECTS.length}`;
+  picker.root.querySelector(".plist").innerHTML = shown.length ? shown.map((s, pos) => {
+    const p = PROJECTS[s.i];
+    const name = [...p.name].map((ch, j) => s.hl.includes(j) ? `<span class="hl">${esc(ch)}</span>` : esc(ch)).join("");
+    return `<li class="pitem" data-pos="${pos}" role="option"><span class="arrow"></span><span class="st ${p.status}"></span>
+      <span class="name">${name}</span><span class="kind">${p.kind}</span></li>`;
+  }).join("") : `<li class="empty">no matches</li>`;
+  select(0);
+}
+
+function select(pos) {
+  const n = picker.shown.length;
+  const preview = picker.root.querySelector(".preview");
+  if (!n) { preview.innerHTML = `<span class="dim">nothing matches “${esc(picker.query)}” — esc clears the filter</span>`; return; }
+  picker.pos = (pos + n) % n;
   picker.root.querySelectorAll(".pitem").forEach((li, j) => {
-    const on = j === picker.idx;
+    const on = j === picker.pos;
     li.classList.toggle("active", on);
     li.setAttribute("aria-selected", on);
     li.querySelector(".arrow").textContent = on ? "❯" : "";
   });
-  picker.root.querySelector(".sel-count").textContent = picker.idx + 1;
+  const p = PROJECTS[picker.shown[picker.pos].i];
   const [lbl, col] = STATUS_LABEL[p.status];
   const live = p.url ? link(p.url) : `<span class="faint">—</span>`;
-  picker.root.querySelector(".preview").innerHTML = `
+  const meta = gitMeta(p);
+  preview.innerHTML = `
     <h3>${esc(p.name)}</h3>
     <div class="tag"># ${esc(p.tag)}</div>
     <p>${esc(p.desc)}</p>
@@ -812,13 +1115,16 @@ function select(i) {
       <dt>status</dt><dd><span class="${col}">● ${lbl}</span></dd>
       <dt>live</dt><dd>${live}</dd>
       <dt>repo</dt><dd><a href="${p.repo}" target="_blank" rel="noopener">${esc(p.repo.replace(/^https:\/\/github.com\//, "gh:"))}</a></dd>
+      ${meta ? `<dt>git</dt><dd>${esc(meta)}</dd>` : ""}
       <dt>stack</dt><dd><div class="chips">${p.stack.map(s => `<span class="chip">${esc(s)}</span>`).join("")}</div></dd>
     </dl>`;
   picker.root.querySelector(".pitem.active").scrollIntoView({ block: "nearest" });
+  if (mode === "select" || mode === "busy") setHash("#projects/" + p.id);
 }
 
 function choose(which) {
-  const p = PROJECTS[picker.idx];
+  if (!picker.shown.length) return;
+  const p = PROJECTS[picker.shown[picker.pos].i];
   closePicker();
   openProject(p, which);
   newPrompt();
@@ -838,6 +1144,7 @@ function complete() {
   }
   const head = input.slice(0, input.lastIndexOf(" ") + 1);
   const token = input.slice(head.length);
+  if (/^theme\s/.test(input)) return offer(head, Object.keys(THEMES).filter(t => t.startsWith(token)));
   const dirPart = token.slice(0, token.lastIndexOf("/") + 1);
   const base = token.slice(dirPart.length);
   const path = dirPart ? resolve(dirPart) : cwd;
@@ -862,39 +1169,38 @@ function offer(head, hits) {
   renderPrompt();
 }
 
-document.addEventListener("keydown", e => {
-  if (e.metaKey || e.altKey) return;
+// ctrl+r: incremental search backwards through history
+function findHistory(q, from) {
+  for (let i = from; i >= 0; i--) if (history[i].includes(q)) return i;
+  return -1;
+}
+function endSearch(accept, runIt) {
+  const text = accept && search.idx >= 0 ? history[search.idx] : input;
+  search = null;
+  mode = "prompt";
+  setInput(text);
+  renderPrompt();
+  if (runIt) submit(text);
+}
+
+function promptKey(e) {
   const k = e.key;
-
-  if (mode === "boot") { fast = true; e.preventDefault(); return; }
-  if (mode === "contact") { e.preventDefault(); contactKey(k.toLowerCase()); return; }
-
-  if (mode === "select") {
-    if (k === "ArrowDown" || k === "j" || (k === "Tab" && !e.shiftKey)) { e.preventDefault(); select(picker.idx + 1); }
-    else if (k === "ArrowUp" || k === "k" || (k === "Tab" && e.shiftKey)) { e.preventDefault(); select(picker.idx - 1); }
-    else if (k === "Home" || k === "g") { e.preventDefault(); select(0); }
-    else if (k === "End" || k === "G") { e.preventDefault(); select(PROJECTS.length - 1); }
-    else if (k === "Enter" || k === "l" || k === "ArrowRight") { e.preventDefault(); choose("url"); }
-    else if (k === "r") { e.preventDefault(); choose("repo"); }
-    else if (k === "q" || k === "Escape" || (e.ctrlKey && k === "c")) {
-      e.preventDefault(); closePicker(); line(`<span class="dim">^C</span>`); newPrompt();
-    }
-    return;
-  }
-
-  if (mode === "busy") {
-    if (e.ctrlKey) return;
-    e.preventDefault();
-    if (k === "Enter") typeahead += "\n";
-    else if (k === "Backspace") typeahead = typeahead.slice(0, -1);
-    else if (k.length === 1) typeahead += k;
-    return;
-  }
-
+  const pos = caret();
   if (e.ctrlKey) {
-    if (k === "l") { e.preventDefault(); pane.innerHTML = ""; promptEl = line(); renderPrompt(); }
-    else if (k === "u") { e.preventDefault(); setInput(""); renderPrompt(); }
-    else if (k === "c" && !getSelection().toString()) { e.preventDefault(); setInput(input + "^C"); freezePrompt(); newPrompt(); }
+    if (k === "l") { pane.innerHTML = ""; promptEl = line(); }
+    else if (k === "u") setInput(input.slice(pos), 0);
+    else if (k === "k") setInput(input.slice(0, pos));
+    else if (k === "a") setInput(input, 0);
+    else if (k === "e") setInput(input);
+    else if (k === "w") {
+      const start = input.slice(0, pos).replace(/\S+\s*$/, "").length;
+      setInput(input.slice(0, start) + input.slice(pos), start);
+    }
+    else if (k === "r") { search = { query: "", idx: -1 }; mode = "search"; }
+    else if (k === "c" && !getSelection().toString()) { setInput(input + "^C"); freezePrompt(); newPrompt(); e.preventDefault(); return; }
+    else return;
+    e.preventDefault();
+    renderPrompt();
     return;
   }
   // printable keys land in the hidden input, which drives the prompt
@@ -913,26 +1219,96 @@ document.addEventListener("keydown", e => {
     histIdx++;
     if (histIdx >= history.length) { histIdx = -1; setInput(""); } else setInput(history[histIdx]);
     renderPrompt();
-  } else if (k === "ArrowLeft" || k === "ArrowRight" || k === "Home" || k === "End") e.preventDefault();
+  } else if (k === "ArrowLeft" || k === "ArrowRight" || k === "Home" || k === "End") {
+    setTimeout(renderPrompt);   // let the hidden input move its caret, then redraw
+  }
+}
+
+function searchKey(e) {
+  const k = e.key;
+  e.preventDefault();
+  if (e.ctrlKey && k === "r") search.idx = findHistory(search.query, (search.idx < 0 ? history.length : search.idx) - 1);
+  else if (e.ctrlKey && (k === "c" || k === "g")) return endSearch(false);
+  else if (k === "Enter") return endSearch(true, true);
+  else if (k === "Escape" || k.startsWith("Arrow") || k === "Tab") return endSearch(true);
+  else if (k === "Backspace") { search.query = search.query.slice(0, -1); search.idx = findHistory(search.query, history.length - 1); }
+  else if (k.length === 1 && !e.ctrlKey) { search.query += k; search.idx = findHistory(search.query, history.length - 1); }
+  renderPrompt();
+}
+
+function selectKey(e) {
+  const k = e.key;
+  if (k === "ArrowDown" || (e.ctrlKey && (k === "n" || k === "j")) || (k === "Tab" && !e.shiftKey)) { e.preventDefault(); select(picker.pos + 1); }
+  else if (k === "ArrowUp" || (e.ctrlKey && (k === "p" || k === "k")) || (k === "Tab" && e.shiftKey)) { e.preventDefault(); select(picker.pos - 1); }
+  else if (k === "Enter") { e.preventDefault(); choose(e.shiftKey ? "repo" : "url"); }
+  else if (k === "Escape" && picker.query) { e.preventDefault(); kb.value = ""; filter(""); }
+  else if (k === "Escape" || (e.ctrlKey && k === "c")) {
+    e.preventDefault();
+    closePicker();
+    if (k !== "Escape") line(`<span class="dim">^C</span>`);
+    newPrompt();
+  }
+  else if (document.activeElement !== kb) kb.focus({ preventScroll: true });   // typing filters through the hidden input
+}
+
+document.addEventListener("keydown", e => {
+  if (e.metaKey || e.altKey) return;
+  const k = e.key;
+
+  if (mode === "boot") { fast = true; e.preventDefault(); return; }
+  if (mode === "contact") {
+    if (k === "Enter" || k === "Escape" || /^[a-z]$/i.test(k)) { e.preventDefault(); contactKey(k.toLowerCase()); }
+    return;
+  }
+  if (mode === "correct") {
+    e.preventDefault();
+    correctKey({ Enter: "n", Escape: "a" }[k] || k.toLowerCase());
+    return;
+  }
+  if (mode === "search") return searchKey(e);
+  if (mode === "select") return selectKey(e);
+  if (mode === "busy") {
+    if (e.ctrlKey) return;
+    e.preventDefault();
+    if (k === "Enter") typeahead += "\n";
+    else if (k === "Backspace") typeahead = typeahead.slice(0, -1);
+    else if (k.length === 1) typeahead += k;
+    return;
+  }
+  promptKey(e);
 });
 
 kb.addEventListener("input", () => {
   if (mode === "prompt") { input = kb.value; renderPrompt(); return; }
+  if (mode === "select") { filter(kb.value); return; }
+  if (mode === "search") {
+    search.query += kb.value;
+    search.idx = findHistory(search.query, history.length - 1);
+    kb.value = "";
+    return renderPrompt();
+  }
   // soft keyboards insert text without a usable keydown: keep it as typeahead too
   if (mode === "busy" && kb.value.startsWith(input)) typeahead += kb.value.slice(input.length);
-  kb.value = input;
+  kb.value = mode === "busy" ? input : "";
 });
+kb.addEventListener("focus", () => mode === "prompt" && renderPrompt());
+kb.addEventListener("blur", () => mode === "prompt" && renderPrompt());
 // mobile keyboards that don't send a usable Enter keydown submit the form instead
 document.getElementById("kbf").addEventListener("submit", e => {
   e.preventDefault();
   if (mode === "prompt") submit(input);
+  else if (mode === "select") choose("url");
 });
 function focusKb() {
   if (!touch) kb.focus({ preventScroll: true });
 }
 pane.addEventListener("click", e => {
   const act = e.target.closest("[data-act]");
-  if (act) { e.preventDefault(); contactKey(act.dataset.act); return; }
+  if (act) {
+    e.preventDefault();
+    if (mode === "correct") correctKey(act.dataset.act); else contactKey(act.dataset.act);
+    return;
+  }
   if (e.target.closest("a")) return;
   if (mode === "boot") { fast = true; return; }
   if (mode === "contact") { contactKey(""); return; }
@@ -948,11 +1324,12 @@ document.querySelectorAll("[data-cmd]").forEach(b => b.addEventListener("click",
 // ─── tmux status ─────────────────────────────────────────────────────────
 function setWindow(cmd) {
   const key = lookup(cmd.split(/\s+/)[0] || "")?.key;
-  const target = { "list-projects": 1, contact: 2, about: 3 }[key] ?? 0;
+  const [target, hash] = { "list-projects": [1, "#projects"], contact: [2, "#contact"], about: [3, "#about"], help: [0, "#help"] }[key] || [0, ""];
   document.querySelectorAll("#wins .win").forEach((w, i) => {
     w.classList.toggle("on", i === target);
     w.textContent = w.textContent.replace(/\*$/, "") + (i === target ? "*" : "");
   });
+  setHash(hash);
 }
 function tick() {
   const d = new Date();
@@ -963,7 +1340,7 @@ function tick() {
 tick(); setInterval(tick, 15000);
 
 async function reconnect() {
-  titleEl.innerHTML = "<b>guest@local</b> — zsh — 120×40";
+  setTitle("guest@local", "zsh");
   await sleep(900);
   line(`<span class="dim">…reconnecting, you can't leave that easily.</span>`);
   await sleep(900);
@@ -973,9 +1350,10 @@ async function reconnect() {
 // real reachability check of the shared backend (opaque response is enough)
 const apiEl = document.getElementById("api");
 fetch("https://api.erickmob.dev/health", { mode: "no-cors", cache: "no-store" })
-  .then(() => { apiEl.innerHTML = '<span style="color:#38e07b">●</span> api'; apiEl.title = "api.erickmob.dev reachable"; })
-  .catch(() => { apiEl.innerHTML = '<span style="color:#ff6b6b">●</span> api'; apiEl.title = "api.erickmob.dev unreachable"; });
+  .then(() => { apiEl.innerHTML = '<span class="g">●</span> api'; apiEl.title = "api.erickmob.dev reachable"; })
+  .catch(() => { apiEl.innerHTML = '<span class="r">●</span> api'; apiEl.title = "api.erickmob.dev unreachable"; });
 
+loadGitHub();
 boot();
 </script>
 </body>
