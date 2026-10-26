@@ -295,7 +295,8 @@
 </div>
 <form id="kbf" autocomplete="off"><input id="kb" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go" aria-label="terminal input"></form>
 
-<!-- Source of truth for the projects: the terminal reads this list. status: live | repo | hw | wip -->
+<!-- Source of truth for the projects: the terminal reads this list. status: live | repo | hw | wip
+     kind: web app | game | backend | cli | firmware — keep the list grouped in that order (icons in KIND_ICON) -->
 <main class="static" aria-label="erickmob.dev (text version)">
   <h1>Erick Mob — erickmob.dev</h1>
   <p>Software engineer. Side projects, tools and tiny hardware.</p>
@@ -326,10 +327,15 @@
       <p>Discover, rate and keep track of your cigars. A revival of the 2021 Smokership app, rebuilt on the shared erickmob stack.</p>
       <a data-live href="https://smokership.erickmob.dev">smokership.erickmob.dev</a> · <a data-repo href="https://github.com/erickmobltda/smokership">source</a>
     </li>
-    <li data-id="erickmob-api" data-kind="backend" data-status="live" data-tag="the one backend behind everything" data-stack="Python, FastAPI, Oracle Cloud, Cloudflare">
-      <h3>erickmob-api</h3>
-      <p>Single FastAPI backend for all apps: verifies Firebase logins, holds every API key, serves AI, market data and files. Runs on an ARM VM behind a Cloudflare Tunnel.</p>
-      <a data-live href="https://api.erickmob.dev/health">api.erickmob.dev/health</a> · <a data-repo href="https://github.com/erickmobltda/erickmob-api">source</a>
+    <li data-id="typenator" data-kind="web app" data-status="live" data-tag="adaptive, ad-free touch typing" data-stack="React, TypeScript, Firebase">
+      <h3>Typenator</h3>
+      <p>Adaptive touch-typing trainer modeled on keybr: pronounceable pseudo-words from the letters you've unlocked, a new letter once each key hits your target speed, per-key stats and progress synced to the cloud.</p>
+      <a data-live href="https://typenator.erickmob.dev">typenator.erickmob.dev</a> · <a data-repo href="https://github.com/erickmob-holding/typenator">source</a>
+    </li>
+    <li data-id="inventory" data-kind="web app" data-status="live" data-tag="what's in the parts drawer" data-stack="React, Vite, Firebase">
+      <h3>Electronics Inventory</h3>
+      <p>My electronic components — which are free and which are in use by projects — edited in the browser and saved to Firestore.</p>
+      <a data-live href="https://inventory.erickmob.dev">inventory.erickmob.dev</a> · <a data-repo href="https://github.com/erickmobltda/eletronic-inventory">source</a>
     </li>
     <li data-id="capita-maeva" data-kind="game" data-status="live" data-tag="pixel-art runner you play with your body" data-stack="HTML5 Canvas, ESP32, BLE HID">
       <h3>Capitã Maeva</h3>
@@ -341,10 +347,10 @@
       <p>Typing trainer for split ergonomic keyboards (Sofle, Corne, Lily58): it shows which key to hit and with which finger, and a zombie horde closes in when you type slow or wrong.</p>
       <a data-live href="https://typist.erickmob.dev">typist.erickmob.dev</a> · <a data-repo href="https://github.com/erickmobltda/Type-gane">source</a>
     </li>
-    <li data-id="typenator" data-kind="web app" data-status="live" data-tag="adaptive, ad-free touch typing" data-stack="React, TypeScript, Firebase">
-      <h3>Typenator</h3>
-      <p>Adaptive touch-typing trainer modeled on keybr: pronounceable pseudo-words from the letters you've unlocked, a new letter once each key hits your target speed, per-key stats and progress synced to the cloud.</p>
-      <a data-live href="https://typenator.erickmob.dev">typenator.erickmob.dev</a> · <a data-repo href="https://github.com/erickmob-holding/typenator">source</a>
+    <li data-id="erickmob-api" data-kind="backend" data-status="live" data-tag="the one backend behind everything" data-stack="Python, FastAPI, Oracle Cloud, Cloudflare">
+      <h3>erickmob-api</h3>
+      <p>Single FastAPI backend for all apps: verifies Firebase logins, holds every API key, serves AI, market data and files. Runs on an ARM VM behind a Cloudflare Tunnel.</p>
+      <a data-live href="https://api.erickmob.dev/health">api.erickmob.dev/health</a> · <a data-repo href="https://github.com/erickmobltda/erickmob-api">source</a>
     </li>
     <li data-id="agent-hub" data-kind="cli" data-status="repo" data-tag="claude code agents on tmux + worktrees" data-stack="bash, tmux, fzf, git, Claude Code">
       <h3>agent-hub</h3>
@@ -358,13 +364,8 @@
     </li>
     <li data-id="zmk" data-kind="firmware" data-status="hw" data-tag="custom split keyboard firmware" data-stack="ZMK, Zephyr, nRF52840">
       <h3>zmk-config</h3>
-      <p>ZMK config for a roBa / Charybdis split keyboard with trackball over ESB, plus a nRF52840 dongle — layers, combos and build tooling.</p>
-      <a data-repo href="https://github.com/erickmobltda/zmk-config-generic">source</a>
-    </li>
-    <li data-id="inventory" data-kind="static" data-status="live" data-tag="what's in the parts drawer" data-stack="HTML, JSON, GitHub Actions">
-      <h3>Electronics Inventory</h3>
-      <p>Static page listing my electronic components — which are free and which are in use by projects. Data validated and deployed on every push.</p>
-      <a data-live href="https://inventory.erickmob.dev">inventory.erickmob.dev</a> · <a data-repo href="https://github.com/erickmobltda/eletronic-inventory">source</a>
+      <p>ZMK config for a roBa / Charybdis split keyboard with trackball over ESB, plus a nRF52840 dongle — layers, combos and build tooling. The keymap explorer shows every layer.</p>
+      <a data-live href="https://zmk.erickmob.dev">zmk.erickmob.dev</a> · <a data-repo href="https://github.com/erickmobltda/zmk-config-generic">source</a>
     </li>
   </ul>
   <h2>Contact</h2>
@@ -389,6 +390,8 @@ const PROJECTS = [...document.querySelectorAll("#projects > li")].map(li => ({
 }));
 
 const STATUS_LABEL = { live: ["live", "g"], repo: ["source", "b"], hw: ["hardware", "o"], wip: ["wip", "y"] };
+// \uFE0E keeps ♟ and ⚙ as text glyphs instead of color emoji
+const KIND_ICON = { "web app": "▣", game: "♟\uFE0E", backend: "⚙\uFE0E", cli: "$", firmware: "⌁" };
 
 // per-visitor conveniences only (visited flag, theme, GitHub cache)
 const store = {
@@ -1118,7 +1121,7 @@ function filter(q) {
     const p = PROJECTS[s.i];
     const name = [...p.name].map((ch, j) => s.hl.includes(j) ? `<span class="hl">${esc(ch)}</span>` : esc(ch)).join("");
     return `<li class="pitem" data-pos="${pos}" role="option"><span class="arrow"></span><span class="st ${p.status}"></span>
-      <span class="name">${name}</span><span class="kind">${p.kind}</span></li>`;
+      <span class="name">${name}</span><span class="kind">${KIND_ICON[p.kind] ?? ""} ${p.kind}</span></li>`;
   }).join("") : `<li class="empty">no matches</li>`;
   select(0);
 }
