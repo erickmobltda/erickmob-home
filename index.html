@@ -151,8 +151,6 @@
     border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
     background: var(--term-2);
   }
-  .picker.done { opacity: .55; }
-  .picker.done .cursor { display: none; }
   .picker-head {
     grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 12px;
     padding: 6px 12px; border-bottom: 1px solid var(--line);
@@ -181,6 +179,12 @@
   .st.repo { background: var(--blue); }
   .st.hw   { background: var(--orange); }
   .st.wip  { background: var(--yellow); }
+
+  /* alternate screen (like fzf/less): the picker takes the whole pane, scrollback comes back on exit */
+  .pane.alt { overflow: hidden; display: flex; flex-direction: column; }
+  .pane.alt > .ln { flex: 1; min-height: 0; display: flex; }
+  .pane.alt .picker { flex: 1; margin: 0; grid-template-rows: auto minmax(0, 1fr) auto; }
+  .pane.alt .plist, .pane.alt .preview { overflow-y: auto; }
 
   .preview { padding: 12px 16px; min-width: 0; }
   .preview h3 { margin: 0 0 2px; font-size: 16px; color: var(--strong); }
@@ -242,6 +246,7 @@
     .banner { font-size: 7.4px; }
     .picker { grid-template-columns: 1fr; }
     .plist { border-right: 0; border-bottom: 1px solid var(--line); }
+    .pane.alt .picker { grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) auto; }
     .quick { display: flex; }
     .status .wins .win:not(.on) { display: none; }
     .status .right .clock { display: none; }
@@ -472,6 +477,7 @@ let queue = null;            // while a command runs, its output is collected he
 let typeahead = "";          // keys typed while a command was still printing, replayed at the next prompt
 let pendingFix = null;       // { original, fixed, el } while zsh asks "correct X to Y?"
 let search = null;           // { query, idx } during ctrl+r
+let altSaved = null;         // scrollback kept aside while the alternate screen (picker) is up
 
 const sleep = ms => new Promise(r => setTimeout(r, fast ? 0 : ms));
 const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
@@ -1046,7 +1052,22 @@ function fuzzy(q, s) {
   return { hl, score: hl[hl.length - 1] - hl[0] + hl[0] * 0.1 };
 }
 
+function enterAlt() {
+  altSaved = [...pane.childNodes];
+  pane.replaceChildren();
+  pane.classList.add("alt");
+  setTitle(undefined, "fzf");
+}
+function leaveAlt() {
+  pane.classList.remove("alt");
+  pane.replaceChildren(...altSaved);
+  altSaved = null;
+  setTitle(undefined, "tmux");
+  scroll();
+}
+
 function cmdProjects([pre]) {
+  enterAlt();
   const host = line();
   host.style.whiteSpace = "normal";
   host.innerHTML = `
@@ -1130,8 +1151,8 @@ function choose(which) {
   newPrompt();
 }
 function closePicker() {
-  picker.root.classList.add("done");
   picker = null;
+  leaveAlt();
 }
 
 // ─── keyboard ────────────────────────────────────────────────────────────
@@ -1245,7 +1266,6 @@ function selectKey(e) {
   else if (k === "Escape" || (e.ctrlKey && k === "c")) {
     e.preventDefault();
     closePicker();
-    if (k !== "Escape") line(`<span class="dim">^C</span>`);
     newPrompt();
   }
   else if (document.activeElement !== kb) kb.focus({ preventScroll: true });   // typing filters through the hidden input
